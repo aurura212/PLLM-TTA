@@ -1,0 +1,359 @@
+[
+  {
+    "group": "choice",
+    "win_vs_prompt": {
+      "observations": 2,
+      "profiles": 1,
+      "score_sum": 0.5,
+      "mean": 0.25,
+      "interval_95": null
+    },
+    "wins": 0,
+    "ties": 1,
+    "losses": 1,
+    "format_valid": {
+      "observations": 2,
+      "profiles": 1,
+      "score_sum": 2.0,
+      "mean": 1.0,
+      "interval_95": null
+    },
+    "prompt_format_valid": {
+      "observations": 2,
+      "profiles": 1,
+      "score_sum": 1.0,
+      "mean": 0.5,
+      "interval_95": null
+    },
+    "repair": {
+      "method": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 1.0,
+        "mean": 0.5,
+        "interval_95": null
+      },
+      "prompt": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 2.0,
+        "mean": 1.0,
+        "interval_95": null
+      },
+      "paired_delta": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": -1.0,
+        "mean": -0.5,
+        "interval_95": null
+      }
+    },
+    "preserve": {
+      "method": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      },
+      "prompt": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      },
+      "paired_delta": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      }
+    },
+    "joint": {
+      "method": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      },
+      "prompt": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      },
+      "paired_delta": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      }
+    },
+    "correct": {
+      "method": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 2.0,
+        "mean": 1.0,
+        "interval_95": null
+      },
+      "prompt": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 2.0,
+        "mean": 1.0,
+        "interval_95": null
+      },
+      "paired_delta": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      }
+    }
+  },
+  {
+    "group": "reason",
+    "win_vs_prompt": {
+      "observations": 2,
+      "profiles": 1,
+      "score_sum": 0.0,
+      "mean": 0.0,
+      "interval_95": null
+    },
+    "wins": 0,
+    "ties": 0,
+    "losses": 2,
+    "format_valid": {
+      "observations": 2,
+      "profiles": 1,
+      "score_sum": 2.0,
+      "mean": 1.0,
+      "interval_95": null
+    },
+    "prompt_format_valid": {
+      "observations": 2,
+      "profiles": 1,
+      "score_sum": 1.0,
+      "mean": 0.5,
+      "interval_95": null
+    },
+    "repair": {
+      "method": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 1.0,
+        "mean": 0.5,
+        "interval_95": null
+      },
+      "prompt": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 2.0,
+        "mean": 1.0,
+        "interval_95": null
+      },
+      "paired_delta": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": -1.0,
+        "mean": -0.5,
+        "interval_95": null
+      }
+    },
+    "preserve": {
+      "method": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      },
+      "prompt": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      },
+      "paired_delta": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      }
+    },
+    "joint": {
+      "method": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      },
+      "prompt": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      },
+      "paired_delta": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      }
+    },
+    "correct": {
+      "method": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 2.0,
+        "mean": 1.0,
+        "interval_95": null
+      },
+      "prompt": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 2.0,
+        "mean": 1.0,
+        "interval_95": null
+      },
+      "paired_delta": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      }
+    }
+  },
+  {
+    "group": "critique",
+    "win_vs_prompt": {
+      "observations": 2,
+      "profiles": 1,
+      "score_sum": 0.0,
+      "mean": 0.0,
+      "interval_95": null
+    },
+    "wins": 0,
+    "ties": 0,
+    "losses": 2,
+    "format_valid": {
+      "observations": 2,
+      "profiles": 1,
+      "score_sum": 2.0,
+      "mean": 1.0,
+      "interval_95": null
+    },
+    "prompt_format_valid": {
+      "observations": 2,
+      "profiles": 1,
+      "score_sum": 1.0,
+      "mean": 0.5,
+      "interval_95": null
+    },
+    "repair": {
+      "method": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 1.0,
+        "mean": 0.5,
+        "interval_95": null
+      },
+      "prompt": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 2.0,
+        "mean": 1.0,
+        "interval_95": null
+      },
+      "paired_delta": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": -1.0,
+        "mean": -0.5,
+        "interval_95": null
+      }
+    },
+    "preserve": {
+      "method": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      },
+      "prompt": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      },
+      "paired_delta": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      }
+    },
+    "joint": {
+      "method": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      },
+      "prompt": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      },
+      "paired_delta": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      }
+    },
+    "correct": {
+      "method": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 2.0,
+        "mean": 1.0,
+        "interval_95": null
+      },
+      "prompt": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 2.0,
+        "mean": 1.0,
+        "interval_95": null
+      },
+      "paired_delta": {
+        "observations": 2,
+        "profiles": 1,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": null
+      }
+    }
+  }
+]

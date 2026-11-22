@@ -1,0 +1,9 @@
+{
+  "fixed_dir": "/data/zhujiajun/PLLM/PLLM-TTA/outputs/smoke-fixed",
+  "model": "/data/share_weight/Qwen2.5-1.5B-Instruct|cca6c1006d2b7154|hidden=1536",
+  "judge_model": "openai/gpt-6-luna",
+  "max_new_tokens": 128,
+  "top_k": 8,
+  "reward_weight": 1.0,
+  "task_fingerprint": "df5083655cb462852cf7bbcacbc6964126a04e3ec99ebe0751125ec89b66da6d"
+}

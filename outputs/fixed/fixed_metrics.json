@@ -1,0 +1,1585 @@
+{
+  "choices": 384,
+  "comments": {
+    "reason": {
+      "requests": 96,
+      "nonempty": 96,
+      "characters": 8915,
+      "eligible": 0,
+      "mentions_missing": 5,
+      "eligible_missing": 0,
+      "parse_errors": 0
+    },
+    "critique": {
+      "requests": 96,
+      "nonempty": 96,
+      "characters": 8472,
+      "eligible": 10,
+      "mentions_missing": 93,
+      "eligible_missing": 5,
+      "parse_errors": 0
+    }
+  },
+  "results": [
+    {
+      "round": 0,
+      "pair": "missing_only",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "missing_only",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "missing_only",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "observed_only",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "observed_only",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "observed_only",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "tradeoff",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "tradeoff",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "tradeoff",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "both_change",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "both_change",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "both_change",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "all",
+      "group": "choice",
+      "observations": 1536,
+      "profiles": 8,
+      "score_sum": 768.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 1536,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 1536,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "all",
+      "group": "reason",
+      "observations": 1536,
+      "profiles": 8,
+      "score_sum": 768.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 1536,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 1536,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 0,
+      "pair": "all",
+      "group": "critique",
+      "observations": 1536,
+      "profiles": 8,
+      "score_sum": 768.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 1536,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 1536,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "missing_only",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "missing_only",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "missing_only",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 200.0,
+      "mean": 0.5208333333333333,
+      "interval_95": [
+        0.5,
+        0.5625
+      ],
+      "correct": 16,
+      "ties": 368,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 8.0,
+        "mean": 0.020833333333333332,
+        "interval_95": [
+          0.0,
+          0.0625
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "observed_only",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "observed_only",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "observed_only",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "tradeoff",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "tradeoff",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "tradeoff",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "both_change",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "both_change",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "both_change",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "all",
+      "group": "choice",
+      "observations": 1536,
+      "profiles": 8,
+      "score_sum": 1344.0,
+      "mean": 0.875,
+      "interval_95": [
+        0.875,
+        0.875
+      ],
+      "correct": 1152,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 1536,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "all",
+      "group": "reason",
+      "observations": 1536,
+      "profiles": 8,
+      "score_sum": 1344.0,
+      "mean": 0.875,
+      "interval_95": [
+        0.875,
+        0.875
+      ],
+      "correct": 1152,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 1536,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 4,
+      "pair": "all",
+      "group": "critique",
+      "observations": 1536,
+      "profiles": 8,
+      "score_sum": 1352.0,
+      "mean": 0.8802083333333333,
+      "interval_95": [
+        0.875,
+        0.890625
+      ],
+      "correct": 1168,
+      "ties": 368,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 1536,
+        "profiles": 8,
+        "score_sum": 8.0,
+        "mean": 0.005208333333333333,
+        "interval_95": [
+          0.0,
+          0.015625
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "missing_only",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "missing_only",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "missing_only",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 208.0,
+      "mean": 0.5416666666666667,
+      "interval_95": [
+        0.5,
+        0.625
+      ],
+      "correct": 32,
+      "ties": 352,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 16.0,
+        "mean": 0.041666666666666664,
+        "interval_95": [
+          0.0,
+          0.125
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "observed_only",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "observed_only",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "observed_only",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "tradeoff",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "tradeoff",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "tradeoff",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "both_change",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "both_change",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "both_change",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "all",
+      "group": "choice",
+      "observations": 1536,
+      "profiles": 8,
+      "score_sum": 1344.0,
+      "mean": 0.875,
+      "interval_95": [
+        0.875,
+        0.875
+      ],
+      "correct": 1152,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 1536,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "all",
+      "group": "reason",
+      "observations": 1536,
+      "profiles": 8,
+      "score_sum": 1344.0,
+      "mean": 0.875,
+      "interval_95": [
+        0.875,
+        0.875
+      ],
+      "correct": 1152,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 1536,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 8,
+      "pair": "all",
+      "group": "critique",
+      "observations": 1536,
+      "profiles": 8,
+      "score_sum": 1360.0,
+      "mean": 0.8854166666666667,
+      "interval_95": [
+        0.875,
+        0.90625
+      ],
+      "correct": 1184,
+      "ties": 352,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 1536,
+        "profiles": 8,
+        "score_sum": 16.0,
+        "mean": 0.010416666666666666,
+        "interval_95": [
+          0.0,
+          0.03125
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "missing_only",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "missing_only",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 192.0,
+      "mean": 0.5,
+      "interval_95": [
+        0.5,
+        0.5
+      ],
+      "correct": 0,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "missing_only",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 232.0,
+      "mean": 0.6041666666666667,
+      "interval_95": [
+        0.5208333333333333,
+        0.7083333333333334
+      ],
+      "correct": 80,
+      "ties": 304,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 40.0,
+        "mean": 0.10416666666666666,
+        "interval_95": [
+          0.020833333333333332,
+          0.20833333333333331
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "observed_only",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "observed_only",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "observed_only",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "tradeoff",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "tradeoff",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "tradeoff",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "both_change",
+      "group": "choice",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "both_change",
+      "group": "reason",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "both_change",
+      "group": "critique",
+      "observations": 384,
+      "profiles": 8,
+      "score_sum": 384.0,
+      "mean": 1.0,
+      "interval_95": [
+        1.0,
+        1.0
+      ],
+      "correct": 384,
+      "ties": 0,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 384,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "all",
+      "group": "choice",
+      "observations": 1536,
+      "profiles": 8,
+      "score_sum": 1344.0,
+      "mean": 0.875,
+      "interval_95": [
+        0.875,
+        0.875
+      ],
+      "correct": 1152,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 1536,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "all",
+      "group": "reason",
+      "observations": 1536,
+      "profiles": 8,
+      "score_sum": 1344.0,
+      "mean": 0.875,
+      "interval_95": [
+        0.875,
+        0.875
+      ],
+      "correct": 1152,
+      "ties": 384,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 1536,
+        "profiles": 8,
+        "score_sum": 0.0,
+        "mean": 0.0,
+        "interval_95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "round": 16,
+      "pair": "all",
+      "group": "critique",
+      "observations": 1536,
+      "profiles": 8,
+      "score_sum": 1384.0,
+      "mean": 0.9010416666666667,
+      "interval_95": [
+        0.8802083333333333,
+        0.9270833333333334
+      ],
+      "correct": 1232,
+      "ties": 304,
+      "incorrect": 0,
+      "delta_vs_choice": {
+        "observations": 1536,
+        "profiles": 8,
+        "score_sum": 40.0,
+        "mean": 0.026041666666666664,
+        "interval_95": [
+          0.005208333333333333,
+          0.05208333333333333
+        ]
+      }
+    }
+  ]
+}

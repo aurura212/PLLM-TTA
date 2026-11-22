@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Caches and ephemeral run noise (keep metrics / reports trackable)
+outputs/**/api_cache/
+outputs/*.log
+**/api_cache/
+*.log
+
+# Model / probe parameters (metrics JSON still tracked)
+outputs/**/probe.npz
+*.npz
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+
+# Scripts may contain API keys / endpoints
+scripts/
+
+# Linked / external data (not part of the small controlled set)
+data/HelpSteer_train.json
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~

@@ -55,7 +55,71 @@ T-POP-2/
     └── test_pipeline.py       离线集成测试和关键约束回归测试
 ```
 
-在 PowerShell 中从本目录运行。固定答案和报告只依赖 NumPy、SciPy 和 Python 标准库。真实生成还需要 PyTorch、Transformers 和预先准备的本地 Hugging Face 因果语言模型权重。安装命令可在自有虚拟环境运行。GPU 实验使用与设备匹配的 PyTorch 构建。
+固定答案和报告只依赖 NumPy、SciPy 和 Python 标准库。真实生成还需要 PyTorch、Transformers 和预先准备的本地 Hugging Face 因果语言模型权重。
+
+### Linux 服务器
+
+在本地工作区根目录执行下面的上传命令。将 `user@server` 换成你的 SSH 地址。这里把 HelpSteer 题库放进项目的 `data/` 目录，后续用 `--helpsteer` 指定它。
+
+```bash
+ssh user@server 'mkdir -p ~/research'
+scp -r T-POP-2 user@server:~/research/
+scp T-POP-main/data/HelpSteer_train.json user@server:~/research/T-POP-2/data/
+```
+
+登录服务器后，在分配到 GPU 的节点配置环境。以下示例使用 Python 3.12。先在激活的环境里执行与你的服务器兼容的 Linux CUDA 安装命令，再安装项目依赖。 [PyTorch 安装选择器](https://pytorch.org/get-started/locally/)
+
+```bash
+cd ~/research/T-POP-2
+python3.12 -m venv .venv
+source .venv/bin/activate
+nvidia-smi
+# 在这里执行 PyTorch 安装选择器给出的命令。
+python -m pip install -r requirements.txt
+python -B -c 'import torch; print(torch.__version__, torch.version.cuda); assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))'
+python -B -m unittest discover -s tests -v
+```
+
+已有模型时，把 `tpop2_model` 指向服务器上的 Hugging Face 权重目录。首次联调可以用下面的 1.5B 指令模型。它用于检查流程，正式比较使用同一个选定模型的同一份权重。 [Qwen 模型卡](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct) · [Hugging Face 下载命令](https://huggingface.co/docs/huggingface_hub/guides/cli#download-files)
+
+```bash
+tpop2_model="$HOME/models/Qwen2.5-1.5B-Instruct"
+hf download Qwen/Qwen2.5-1.5B-Instruct --local-dir "$tpop2_model"
+```
+
+设置 API 环境变量。将模型 ID 占位符换成提供方的实际值。`TPOP2_BASE_URL` 默认为 `https://api.openai.com/v1`，使用其他兼容端点时将它设为提供方的 API 基址。若端点拒绝 `seed`、`temperature` 或 `response_format`，设置 `TPOP2_API_MODE=portable` 后重试。
+
+```bash
+read -rsp 'API key: ' TPOP2_API_KEY
+printf '\n'
+export TPOP2_API_KEY
+export TPOP2_USER_MODEL='<模拟用户模型 ID>'
+export TPOP2_JUDGE_MODEL='<不同的裁判模型 ID>'
+```
+
+先做 **1 个画像、2 道测试题**的联调。固定答案阶段在 CPU 上即可运行，探针和真实生成使用 GPU。两次模型命令使用相同的 `--model` 路径，生成会自动读取前一步的 `outputs/probe/probe.npz`。
+
+```bash
+python -B -m tpop2 fixed --seeds 17 --profile-limit 1 --test-limit 2 \
+  --out-dir outputs/smoke-fixed
+python -B -m tpop2 probe --model "$tpop2_model" --device cuda:0 \
+  --helpsteer data/HelpSteer_train.json
+python -B -m tpop2 generate --model "$tpop2_model" --device cuda:0 \
+  --fixed-dir outputs/smoke-fixed --out-dir outputs/smoke-generation
+python -B -m tpop2 report --run-dir outputs/smoke-fixed outputs/smoke-generation
+```
+
+联调通过后运行正式规模。模型权重与路径相同时复用探针。更换模型时重新训练探针。正式默认规模最多约 3,456 次 API 调用，实际次数随非空评价与缓存命中而变。
+
+```bash
+python -B -m tpop2 fixed
+python -B -m tpop2 generate --model "$tpop2_model" --device cuda:0
+python -B -m tpop2 report
+```
+
+### Windows PowerShell
+
+从项目目录运行。固定答案和报告使用 CPU 即可。GPU 实验使用与设备匹配的 PyTorch 构建。
 
 ```powershell
 Set-Location 'D:\USTC\科研\研究方向\PLLM\T-POP-2'

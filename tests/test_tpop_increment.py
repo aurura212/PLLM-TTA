@@ -48,7 +48,7 @@ class IncrementTests(unittest.TestCase):
         for name in ("model.py", "rm_eval.py"):
             self.assertEqual((project / name).read_bytes(), (upstream / name).read_bytes())
 
-    def test_critique_keeps_choice_call_and_edits_selected_span_only(self):
+    def test_critique_keeps_choice_call_and_accepts_only_user_comment(self):
         control = collector(["[[B]]"], critiques=False)
         intervention = collector(["[[B]]", json.dumps({"comment": "Drop the time detail.",
                                                    "original_span": " after a brief delay", "replacement": ""})],
@@ -60,20 +60,78 @@ class IncrementTests(unittest.TestCase):
         self.assertEqual(control.client.chat.completions.create.call_args,
                          intervention.client.chat.completions.create.call_args_list[0])
         self.assertEqual(control.client.chat.completions.create.call_count, 1)
-        self.assertEqual(extended["critique"]["revised_y"], "What happened? Be concise. It passed.")
+        self.assertEqual(extended["critique"], {"comment": "Drop the time detail.", "status": "comment_only"})
 
-    def test_unusable_edit_and_optional_api_failure_keep_binary_label(self):
-        self.assertIsNone(judger.local_revision("short short answer", "short", "long"))
-        self.assertIsNone(judger.local_revision("short answer", "short answer", "different answer"))
-        instance = collector(["[[A]]", '{"comment":"Explain the result.","original_span":"absent","replacement":"x"}'],
-                             critiques=True)
+    def test_empty_comment_and_optional_api_failure_keep_binary_label(self):
+        instance = collector(["[[A]]", '{"comment":""}'], critiques=True)
         result = instance.collect_single(EXAMPLE)
         self.assertEqual(result["label"], 0)
-        self.assertEqual(result["critique"]["status"], "comment_only")
+        self.assertEqual(result["critique"]["status"], "empty")
         self.assertNotIn("revised_y", result["critique"])
         failed = collector(["[[A]]", "invalid JSON"], critiques=True).collect_single(EXAMPLE)
         self.assertEqual(failed["label"], 0)
         self.assertEqual(failed["critique"]["status"], "failed")
+
+    def test_revision_is_generated_by_frozen_base_model_from_question_answer_and_comment(self):
+        class Batch(dict):
+            def to(self, device):
+                return self
+
+        class Tokenizer:
+            chat_template = "chat"
+
+            def apply_chat_template(self, messages, **kwargs):
+                self.messages = messages
+                self.template_options = kwargs
+                return "templated prompt"
+
+            def __call__(self, prompt, **kwargs):
+                self.prompt = prompt
+                self.tokenizer_options = kwargs
+                return Batch(input_ids=torch.tensor([[2, 4, 6]]), attention_mask=torch.ones(1, 3))
+
+            def decode(self, ids, **kwargs):
+                self.decoded_ids = ids.tolist()
+                return " It passed. "
+
+        def generate(**kwargs):
+            self.assertTrue(torch.is_inference_mode_enabled())
+            self.assertFalse(kwargs["do_sample"])
+            self.assertEqual(kwargs["max_new_tokens"], 2)
+            return torch.tensor([[2, 4, 6, 7, 8]])
+
+        tokenizer = Tokenizer()
+        generator = SimpleNamespace(tokenizer=tokenizer, llm_device="cpu",
+                                    LLM=SimpleNamespace(config=SimpleNamespace(max_position_embeddings=5),
+                                                        generate=generate))
+        revised = imple_armo.generate_revision(generator, "What happened?", "It passed after a brief delay.",
+                                               "Drop the time detail.", 8)
+        self.assertEqual(revised, "It passed.")
+        self.assertEqual(tokenizer.decoded_ids, [7, 8])
+        self.assertTrue(tokenizer.template_options["add_generation_prompt"])
+        self.assertFalse(tokenizer.tokenizer_options["add_special_tokens"])
+        item = json.loads(tokenizer.messages[0]["content"].split("\n\n", 1)[1])
+        self.assertEqual(item, {"question": "What happened?", "selected_answer": "It passed after a brief delay.",
+                                "user_feedback": "Drop the time detail."})
+
+    def test_unusable_assistant_revision_preserves_comment_and_excludes_legacy_edits(self):
+        for result, status in (("original", "revision_unusable"), ("", "revision_unusable"),
+                               (RuntimeError("backend error"), "revision_failed")):
+            critique = {"comment": "Explain the result.", "status": "comment_only"}
+            with patch.object(imple_armo, "generate_revision", side_effect=[result]):
+                imple_armo.add_assistant_revision(None, critique, "question", "original", 8)
+            self.assertEqual(critique, {"comment": "Explain the result.", "status": status})
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "preferences.jsonl"
+            original = {"y1": "A", "y2": "B", "label": 0}
+            legacy = {**original, "critique": {"status": "usable", "revised_y": "user-generated rewrite"}}
+            current = {**original, "critique": {"status": "usable", "revision_source": "base_llm",
+                                               "revised_y": "assistant rewrite"}}
+            path.write_text("\n".join(map(json.dumps, (legacy, current))), encoding="utf-8")
+            rows = imple_armo.PreferenceDataset(str(path), include_critiques=True)
+            self.assertEqual(rows[0], ("A", "B", 0, ""))
+            self.assertEqual(rows[1], ("A", "B", 0, "assistant rewrite"))
 
     def test_bce_uses_upstream_label_direction(self):
         a = torch.zeros(2, requires_grad=True)
@@ -117,15 +175,23 @@ class IncrementTests(unittest.TestCase):
             for mode in ("choice", "critique"):
                 torch.manual_seed(42)
                 generator = Generator()
-                responses = ["[[A]]"] if mode == "choice" else [
-                    "[[A]]", '{"comment":"Remove redundant detail.","original_span":" Extra detail follows.","replacement":""}']
+                responses = ["[[A]]"] if mode == "choice" else ["[[A]]", '{"comment":"Remove redundant detail."}']
                 judge = collector(responses * 3, critiques=mode == "critique")
                 CountedAdamW.steps = 0
                 cfg = SimpleNamespace(output_dir=str(Path(folder) / mode), feedback_mode=mode, critique_weight=4.0,
                                       batch_size=2, lr=0.01, epochs_per_query=1, reward_model_device="cpu",
                                       attribute="concise", reward_weight=1.0, max_new_tokens=12,
                                       pre_screen_beam_width=5, nu_mab=1.0, lambda_mab=1.0)
-                imple_armo.train_reward(generator, judge, "concise", ["Q1", "Q2", "Q3"], cfg)
+                with patch.object(imple_armo, "generate_revision", return_value="The test passed.") as revise:
+                    imple_armo.train_reward(generator, judge, "concise", ["Q1", "Q2", "Q3"], cfg)
+                self.assertEqual(revise.call_count, 3 if mode == "critique" else 0)
+                if mode == "critique":
+                    self.assertEqual(revise.call_args.args[2:], ("The test passed. Extra detail follows.",
+                                                                "Remove redundant detail.", 12))
+                    log = Path(cfg.output_dir) / "preferences" / "preferences.jsonl"
+                    record = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+                    self.assertEqual(record["critique"]["revision_source"], "base_llm")
+                    self.assertTrue(record["critique"]["revised_y"].endswith("The test passed."))
                 results[mode] = (generator.calls, CountedAdamW.steps, generator.reward_model.weight.detach().clone())
             self.assertEqual(results["choice"][:2], results["critique"][:2])
             self.assertEqual(results["choice"][1], 2)
@@ -133,7 +199,7 @@ class IncrementTests(unittest.TestCase):
 
     def test_optional_evaluation_feedback_does_not_change_winner(self):
         evaluation = WinrateEvaluator(
-            collector(["[[A]]", '{"comment":"Good enough for me.","original_span":"","replacement":""}'],
+            collector(["[[A]]", '{"comment":"Good enough for me."}'],
                       critiques=True), "concise")
         ours, baseline = ({"query": "q", "response": "A reply"}, {"query": "q", "response": "B reply"})
         stats = evaluation.evaluate_all([(ours, baseline)])
@@ -143,6 +209,7 @@ class IncrementTests(unittest.TestCase):
             evaluation.save_results(str(output), stats, "a.jsonl", "b.jsonl")
             feedback = json.loads(output.with_suffix(".critiques.jsonl").read_text(encoding="utf-8"))
             self.assertEqual(feedback["critique"]["comment"], "Good enough for me.")
+            self.assertNotIn("revised_answer", feedback["critique"])
 
 
 if __name__ == "__main__":

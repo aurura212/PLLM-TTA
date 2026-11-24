@@ -18,6 +18,12 @@ from model import MABRewardGenerator
 from judger import PreferenceCollector
 from rm_eval import PersonalizationRMEvaluator
 
+REVISION_INSTRUCTION = (
+    "Rewrite the selected answer to the original question so it addresses the user's feedback. "
+    "Preserve useful and correct details unrelated to the requested change, and avoid unverified facts. "
+    "Return only the complete revised answer, without explaining what you changed."
+)
+
 # ---------------- Training Components ----------------
 class PreferenceDataset(Dataset):
     def __init__(self, path: str, include_critiques: bool = False):
@@ -35,7 +41,9 @@ class PreferenceDataset(Dataset):
                         sample = (rec["y1"], rec["y2"], rec["label"])
                         if include_critiques:
                             critique = rec.get("critique", {})
-                            revision = critique.get("revised_y", "") if critique.get("status") == "usable" else ""
+                            revision = ""
+                            if critique.get("status") == "usable" and critique.get("revision_source") == "base_llm":
+                                revision = critique.get("revised_y", "")
                             sample = (*sample, revision)
                         self.samples.append(sample)
                 except json.JSONDecodeError:
@@ -56,7 +64,7 @@ def pairwise_loss(s1: torch.Tensor, s2: torch.Tensor, label: torch.Tensor) -> to
 
 
 def critique_loss(generator, s1, s2, labels, revisions):
-    """Compare valid local edits with their chosen originals in the same batch."""
+    """Compare assistant revisions with their chosen originals in the same batch."""
     indices = [idx for idx, revision in enumerate(revisions) if revision]
     if not indices:
         return None
@@ -66,6 +74,50 @@ def critique_loss(generator, s1, s2, labels, revisions):
     # Divide by the original batch size: missing feedback contributes zero.
     # Keep the number of training examples and optimizer steps unchanged.
     return F.softplus(original - revised).sum() / labels.numel()
+
+@torch.inference_mode()
+def generate_revision(generator, query, answer, comment, max_new_tokens):
+    """Use the frozen assistant to answer again in light of the feedback."""
+    item = json.dumps({"question": query, "selected_answer": answer, "user_feedback": comment}, ensure_ascii=False)
+    tokenizer = generator.tokenizer
+    has_chat_template = bool(getattr(tokenizer, "chat_template", None))
+    if has_chat_template:
+        prompt = tokenizer.apply_chat_template(
+            [{"role": "user", "content": f"{REVISION_INSTRUCTION}\n\n{item}"}],
+            tokenize=False, add_generation_prompt=True,
+        )
+    else:
+        prompt = f"{REVISION_INSTRUCTION}\n\n{item}\n\nRevised answer:\n"
+    inputs = tokenizer(prompt, return_tensors="pt", add_special_tokens=not has_chat_template).to(generator.llm_device)
+    prompt_length = inputs["input_ids"].shape[-1]
+    context_length = getattr(generator.LLM.config, "max_position_embeddings", None)
+    if context_length is not None:
+        max_new_tokens = min(max_new_tokens, context_length - prompt_length)
+    if max_new_tokens < 1:
+        raise ValueError("No context space available for the assistant's revision")
+    # The separate greedy call leaves the original dual-arm generation and
+    # its exploration state untouched.
+    ids = generator.LLM.generate(
+        **inputs, do_sample=False, num_beams=1, num_return_sequences=1,
+        max_new_tokens=max_new_tokens, return_dict_in_generate=False,
+    )
+    return tokenizer.decode(ids[0, prompt_length:], skip_special_tokens=True).strip()
+
+
+def add_assistant_revision(generator, critique, enhanced_query, selected_answer, max_new_tokens):
+    """Keep the binary choice even when revision generation fails or adds no signal."""
+    try:
+        revised = generate_revision(generator, enhanced_query, selected_answer, critique["comment"], max_new_tokens)
+    except Exception as error:
+        critique["status"] = "revision_failed"
+        print(f"[WARNING] Assistant revision failed ({type(error).__name__}): {error}")
+        return
+    if not revised or revised == selected_answer.strip():
+        critique["status"] = "revision_unusable"
+        return
+    critique.update(status="usable", revision_source="base_llm", revised_answer=revised,
+                    revised_y=f"{enhanced_query} {revised}")
+
 
 def reinit_reward_model(model: nn.Module, init_state_dict: dict):
     model.load_state_dict(copy.deepcopy(init_state_dict))
@@ -234,6 +286,10 @@ def train_reward(generator: MABRewardGenerator, judge: PreferenceCollector,
                 "response_2": response_2,
             })
             if pref:
+                critique = pref.get("critique")
+                if use_critiques and critique and critique["comment"]:
+                    selected_answer = response_1 if pref["label"] == 0 else response_2
+                    add_assistant_revision(generator, critique, enhanced_prompt, selected_answer, cfg.max_new_tokens)
                 with open(pref_path, "a", encoding="utf-8") as pf:
                     pf.write(json.dumps(pref, ensure_ascii=False) + "\n")
 
@@ -550,7 +606,7 @@ if __name__ == "__main__":
     parser.add_argument("--feedback_mode", choices=("choice", "critique"), default="choice",
                         help="Use only A/B choices, or add an optional user evaluation after each choice")
     parser.add_argument("--critique_weight", type=float, default=0.5,
-                        help="Weight of local revision comparisons in critique mode")
+                        help="Weight of assistant revision comparisons in critique mode")
 
     cfg = parser.parse_args()
     try:

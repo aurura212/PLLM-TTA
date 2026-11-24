@@ -7,11 +7,11 @@
 | 模式 | 在线反馈与训练 |
 |---|---|
 | `--feedback_mode choice` | 用原始 A/B 裁判收集选择，只训练 Bradley–Terry 比较损失。默认模式。 |
-| `--feedback_mode critique` | 先调用完全相同的 A/B 裁判，再让同一模拟用户评价选中回复的信息。能用唯一、精确的原文片段作局部修改时，额外训练「修改版优于选中原版」的软约束。 |
+| `--feedback_mode critique` | 先收集 A/B 选择，再让模拟用户只给文字评价。同一个冻结的基座 LLM 根据评价生成一篇新的完整回复，额外训练「新版优于选中原版」的软约束。 |
 
-例如用户选 A 后说「这段背景重复了」，模拟用户可以引用选中回答中唯一出现的背景段并给出替换。原始 A/B 仍作为一条选择记录，修改只作用于一条辅助比较。自由评价、修改版和状态保存在 `preferences/preferences.jsonl` 的 `critique` 字段。仅有评价、引用不唯一或请求失败时，该轮仍保留原始 A/B。局部改写是模拟用户提出的弱监督，片段验证只检查定位与文本变更。
+例如用户选 A 后说「这段背景重复了」，助手接收原题、A 和这句评价，调用冻结基座贪心生成完整的 A′。A/B 候选仍由原始 T-POP 双分支生成。系统保留 A ≻ B，并在 A′ 非空且有变化时用 A′ ≻ A 作为一条弱监督。评价原文、生成状态及由基座生成的新版保存在 `preferences/preferences.jsonl` 的 `critique` 字段，有效新版带 `revision_source=base_llm`。空评价、请求失败、生成失败或回复无变化时照常保留 A/B。辅助比较先假定新版改善了回复，实际质量由后续评测检验。
 
-每批损失为原始比较损失加 `critique_weight × sum(softplus(r(原版) - r(修改版))) / 原批次大小`。默认 `critique_weight=0.5`。权重设为 `0` 可收集评价而只使用选择更新。有效修改跟随原样本进同一个 batch，因此比较两组时，批次大小、样本总数、优化器步数和按样本数计算的权重衰减保持一致。随奖励权重更新，两组后续生成的具体回复可能分化，这是在线实验的结果。
+每批损失为原始比较损失加 `critique_weight × sum(softplus(r(原版) - r(新版))) / 原批次大小`。默认 `critique_weight=0.5`。权重设为 `0` 时只记录评价和选择，通过 A/B 更新。有效新版跟随原样本进同一个 batch，因此比较两组时，批次大小、样本总数、优化器步数和按样本数计算的权重衰减保持一致。随奖励权重更新，两组后续生成的具体回复可能分化，这是在线实验的结果。
 
 两个模式共同修正了原快照的训练标签方向。裁判输出保持 `0=A`、`1=B`，计算 `BCEWithLogits(r_A-r_B, ·)` 时转换为 `1-label`。胜率统计仍使用原标签。训练顺序和评测题范围沿用上游快照。上游先用此前已收集的反馈更新，再生成本轮候选，因此最后一轮反馈仅写入日志。默认 ArmoRM 评估使用输入题库全集，报告时按这一评测范围解释。
 
@@ -37,14 +37,14 @@ common=(
 python -B imple_armo.py "${common[@]}" --feedback_mode choice \
   --output_dir outputs/tpop-increment/choice
 python -B imple_armo.py "${common[@]}" --feedback_mode critique --critique_weight 0.5 \
-  --output_dir outputs/tpop-increment/critique
+  --output_dir outputs/tpop-increment/assistant-critique
 ```
 
-对照 `result.txt` 的原版 ArmoRM 分数。需要 A/B 胜率时，运行原版胜率入口。加上 `--collect_critiques` 后，独立裁判在作出原版 A/B 判决之后，还能给出文字评价。这些评价保存在 `wins.critiques.jsonl`，胜率依然只由原有判决计算。
+对照 `result.txt` 的原版 ArmoRM 分数。需要 A/B 胜率时，运行原版胜率入口。加上 `--collect_critiques` 后，独立裁判在作出原版 A/B 判决之后还能给出文字评价。此步骤把评价保存在 `wins.critiques.jsonl`，胜率依然只由原有判决计算。基于评价生成 A′ 的步骤发生在在线训练中。
 
 ```bash
 python -B winrate_evaluator.py --attribute concise \
-  --ours_file outputs/tpop-increment/critique/responses/responses_armo_rw_1.00.jsonl \
+  --ours_file outputs/tpop-increment/assistant-critique/responses/responses_armo_rw_1.00.jsonl \
   --baseline_file outputs/tpop-increment/choice/responses/responses_armo_rw_1.00.jsonl \
   --judge_model "$TPOP2_JUDGE_MODEL" --api_base_url "$TPOP2_BASE_URL" \
   --collect_critiques --output_file outputs/tpop-increment/wins.txt

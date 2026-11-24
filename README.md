@@ -1,4 +1,58 @@
-# T-POP-2
+# PLLM-TTA
+
+## 基于 T-POP 的在线对照实验
+
+当前入口为 `imple_armo.py`。`model.py` 和 `rm_eval.py` 是同级 `T-POP-main` 对应文件的原样副本。两组共用原始候选生成器、利用与探索分支、嵌入模型、MLP 奖励头、数据抽样、优化器与评测流程。`T-POP-main` 保留原始快照。
+
+| 模式 | 在线反馈与训练 |
+|---|---|
+| `--feedback_mode choice` | 用原始 A/B 裁判收集选择，只训练 Bradley–Terry 比较损失。默认模式。 |
+| `--feedback_mode critique` | 先调用完全相同的 A/B 裁判，再让同一模拟用户评价选中回复的信息。能用唯一、精确的原文片段作局部修改时，额外训练「修改版优于选中原版」的软约束。 |
+
+例如用户选 A 后说「这段背景重复了」，模拟用户可以引用选中回答中唯一出现的背景段并给出替换。原始 A/B 仍作为一条选择记录，修改只作用于一条辅助比较。自由评价、修改版和状态保存在 `preferences/preferences.jsonl` 的 `critique` 字段。仅有评价、引用不唯一或请求失败时，该轮仍保留原始 A/B。局部改写是模拟用户提出的弱监督，片段验证只检查定位与文本变更。
+
+每批损失为原始比较损失加 `critique_weight × sum(softplus(r(原版) - r(修改版))) / 原批次大小`。默认 `critique_weight=0.5`。权重设为 `0` 可收集评价而只使用选择更新。有效修改跟随原样本进同一个 batch，因此比较两组时，批次大小、样本总数、优化器步数和按样本数计算的权重衰减保持一致。随奖励权重更新，两组后续生成的具体回复可能分化，这是在线实验的结果。
+
+两个模式共同修正了原快照的训练标签方向。裁判输出保持 `0=A`、`1=B`，计算 `BCEWithLogits(r_A-r_B, ·)` 时转换为 `1-label`。胜率统计仍使用原标签。训练顺序和评测题范围沿用上游快照。上游先用此前已收集的反馈更新，再生成本轮候选，因此最后一轮反馈仅写入日志。默认 ArmoRM 评估使用输入题库全集，报告时按这一评测范围解释。
+
+### Linux 运行
+
+在 `PLLM-TTA` 目录激活实验环境，安装 `requirements.txt`，加载既有 API 配置。下面使用同级 T-POP 的 HelpSteer 题库、本地基座以及原嵌入模型。先用较小的同一份题库联调时，两条命令都指向同一文件，并给它们独立的输出目录。完整阶段的输入文件用于同一套正式比较。
+
+```bash
+python -m pip install -r requirements.txt
+python -B -m unittest discover -s tests -v
+
+# 设置 TPOP2_API_KEY、TPOP2_BASE_URL、TPOP2_USER_MODEL 和 TPOP2_MODEL
+# 将设备调整成当前作业可用的 GPU；同一组对比使用相同参数
+common=(
+  --llm_path "$TPOP2_MODEL"
+  --embedding_model_path "${TPOP2_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}"
+  --data_file ../T-POP-main/data/HelpSteer_train.json
+  --attribute concise --train_samples 100 --seed 42 --reward_weight 1.0
+  --llm_device cuda:0 --reward_model_device cuda:0 --embedding_model_device cuda:0
+  --preference_model_name "$TPOP2_USER_MODEL" --preference_api_base_url "$TPOP2_BASE_URL"
+)
+
+python -B imple_armo.py "${common[@]}" --feedback_mode choice \
+  --output_dir outputs/tpop-increment/choice
+python -B imple_armo.py "${common[@]}" --feedback_mode critique --critique_weight 0.5 \
+  --output_dir outputs/tpop-increment/critique
+```
+
+对照 `result.txt` 的原版 ArmoRM 分数。需要 A/B 胜率时，运行原版胜率入口。加上 `--collect_critiques` 后，独立裁判在作出原版 A/B 判决之后，还能给出文字评价。这些评价保存在 `wins.critiques.jsonl`，胜率依然只由原有判决计算。
+
+```bash
+python -B winrate_evaluator.py --attribute concise \
+  --ours_file outputs/tpop-increment/critique/responses/responses_armo_rw_1.00.jsonl \
+  --baseline_file outputs/tpop-increment/choice/responses/responses_armo_rw_1.00.jsonl \
+  --judge_model "$TPOP2_JUDGE_MODEL" --api_base_url "$TPOP2_BASE_URL" \
+  --collect_critiques --output_file outputs/tpop-increment/wins.txt
+```
+
+## 旧版固定答案实验
+
+以下记录对应 `python -m tpop2` 的固定答案与共享探针实验。新的 T-POP 在线对照从上方 `imple_armo.py` 启动，旧输出保留用于查阅历史结果。
 
 ## 实验目的
 

@@ -15,9 +15,11 @@ class PersonalizationRMEvaluator:
         self.attribute = attribute
         self.device = device
         self.rm_batch_size = rm_batch_size
-        rm_path = 'RLHFlow/ArmoRM-Llama3-8B-v0.1'
-        self.rmodel = AutoModelForSequenceClassification.from_pretrained(rm_path, trust_remote_code=True, torch_dtype=torch.bfloat16).to(self.device)
-        self.tokenizer = AutoTokenizer.from_pretrained(rm_path, use_fast=True)
+        rm_path = '/data/zhujiajun/schema-mem/ArmoRM-Llama3-8B-v0.1'
+        self.rmodel = AutoModelForSequenceClassification.from_pretrained(
+            rm_path, trust_remote_code=True, local_files_only=True, torch_dtype=torch.bfloat16
+        ).to(self.device)
+        self.tokenizer = AutoTokenizer.from_pretrained(rm_path, use_fast=True, local_files_only=True)
 
     def load_data(self, file_path):
         responses = []

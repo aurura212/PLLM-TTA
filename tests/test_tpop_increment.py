@@ -212,5 +212,47 @@ class IncrementTests(unittest.TestCase):
             self.assertNotIn("revised_answer", feedback["critique"])
 
 
+    def test_low_memory_uses_cpu_and_failure_is_not_written_as_zero(self):
+        self.assertEqual(imple_armo.scoring_device("cuda:4", 1024), "cpu")
+        self.assertEqual(imple_armo.scoring_device("cuda:4", 20 * 1024 ** 3), "cuda:4")
+        self.assertTrue(imple_armo.is_memory_error(RuntimeError("CUDA out of memory. Tried to allocate 2.00 GiB")))
+
+        calls = []
+
+        def fake_score(responses_file, attribute, device, batch_size):
+            calls.append((device, batch_size))
+            if device.startswith("cuda"):
+                raise RuntimeError("CUDA out of memory")
+            return 0.25
+
+        with patch.object(imple_armo, "_free_cuda_bytes", return_value=1024), \
+                patch.object(imple_armo, "_score_with_armorm", side_effect=fake_score):
+            score, device, batch_size, note = imple_armo.score_responses("responses.jsonl", "creative", "cuda:4", 128)
+            self.assertEqual((score, device, batch_size), (0.25, "cpu", 4))
+            self.assertIn("below the 15 GiB", note)
+            self.assertEqual(calls, [("cpu", 4)])
+
+        calls.clear()
+        with patch.object(imple_armo, "_free_cuda_bytes", return_value=20 * 1024 ** 3), \
+                patch.object(imple_armo, "_score_with_armorm", side_effect=fake_score):
+            score, device, batch_size, note = imple_armo.score_responses("responses.jsonl", "creative", "cuda:4", 128)
+            self.assertEqual((score, device, batch_size), (0.25, "cpu", 4))
+            self.assertIn("GPU scoring failed", note)
+            self.assertEqual(calls, [("cuda:4", 128), ("cpu", 4)])
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "result.txt"
+            imple_armo.append_experiment_results(str(path), {
+                "error": "CUDA out of memory\nRuntimeError: allocation failed",
+                "total": 3,
+                "failed_generations": 1,
+            }, 100, 548)
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("ArmoRM scoring failed", text)
+            self.assertIn("allocation failed", text)
+            self.assertNotIn("ArmoRM Score:", text)
+            self.assertNotIn("0.000000", text)
+
+
 if __name__ == "__main__":
     unittest.main()

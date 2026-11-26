@@ -193,9 +193,11 @@ class MABRewardGenerator:
         if select_idx_history is None:
             select_idx_history = []
 
-        if not hasattr(self, 'V_inv') or not hasattr(self, 'total_reward_params'):
+        if not hasattr(self, 'V_diag') or not hasattr(self, 'total_reward_params'):
             self.total_reward_params = sum(p.numel() for p in self.reward_model.parameters() if p.requires_grad)
-            self.V_inv = (1.0 / lambda_mab) * torch.ones(
+            # Diagonal of V_0 = λ I (Algo. 1). The full outer product is intractable
+            # at reward-parameter scale, so only the diagonal is stored.
+            self.V_diag = lambda_mab * torch.ones(
                 self.total_reward_params,
                 dtype=torch.float32,
                 device=self.reward_model_device
@@ -308,8 +310,11 @@ class MABRewardGenerator:
                 for i in range(union_beam_width):
                     if i < len(grads_cand2):
                         grad_diff = grads_cand2[i] - greedy_grad
-                        if grad_diff.shape[0] == self.V_inv.shape[0]:
-                            exploration_term[i] = torch.sqrt(torch.sum(grad_diff**2 * self.V_inv).clamp(min=1e-16))
+                        if grad_diff.shape[0] == self.V_diag.shape[0]:
+                            # ||Δg||_{V^{-1}} = sqrt(Σ_j Δg_j^2 / V_jj) under diagonal V.
+                            exploration_term[i] = torch.sqrt(
+                                torch.sum(grad_diff**2 / self.V_diag.clamp(min=1e-16)).clamp(min=1e-16)
+                            )
                         else:
                             exploration_term[i] = 0.0
                     else:
@@ -337,9 +342,10 @@ class MABRewardGenerator:
                 selected_grad1 = grads_cand1[best_idx_arm1]
                 selected_grad2 = grads_cand2[best_idx_arm2]
 
-                if selected_grad1.shape[0] == selected_grad2.shape[0] == self.V_inv.shape[0]:
+                if selected_grad1.shape[0] == selected_grad2.shape[0] == self.V_diag.shape[0]:
                     grad_diff = selected_grad1 - selected_grad2
-                    self.V_inv = (self.V_inv + grad_diff**2).clamp(min=1e-16)
+                    # V ← V + δg δg^T, restricted to the diagonal.
+                    self.V_diag = self.V_diag + grad_diff**2
             except Exception:
                 pass
 

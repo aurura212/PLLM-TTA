@@ -175,82 +175,86 @@ def train_reward(generator: MABRewardGenerator, judge: PreferenceCollector,
     pref_path = os.path.join(pref_dir, "preferences.jsonl")
     use_critiques = cfg.feedback_mode == "critique" and cfg.critique_weight > 0
 
+    def fit_preferences(dataset: PreferenceDataset, label: str) -> int:
+        """Refit the original reward weights on one snapshot of collected feedback."""
+        reinit_reward_model(generator.reward_model, init_model_weights)
+        sample_count = len(dataset)
+        if sample_count == 0:
+            return 0
+
+        loader = DataLoader(
+            dataset,
+            batch_size=cfg.batch_size,
+            shuffle=True,
+            num_workers=0
+        )
+        wd = 1.0 / (sample_count + 50)
+        optimizer = torch.optim.AdamW(
+            generator.reward_model.parameters(),
+            lr=cfg.lr,
+            weight_decay=wd
+        )
+        generator.reward_model.train()
+        print(f"   {label}: wd={wd:.4f}")
+
+        for ep in range(cfg.epochs_per_query):
+            total_loss = 0.0
+            batch_count = 0
+
+            for batch in loader:
+                y1, y2, lab = batch[:3]
+                lab_t = lab.to(cfg.reward_model_device).float() \
+                        if isinstance(lab, torch.Tensor) else torch.tensor(lab, device=cfg.reward_model_device).float()
+
+                emb1 = generator.get_embedding(list(y1)).to(cfg.reward_model_device)
+                emb2 = generator.get_embedding(list(y2)).to(cfg.reward_model_device)
+                s1 = generator.reward_model(emb1)
+                s2 = generator.reward_model(emb2)
+
+                # Compute pairwise preference loss
+                loss = pairwise_loss(s1, s2, lab_t)
+                if use_critiques:
+                    extra_loss = critique_loss(generator, s1, s2, lab_t, batch[3])
+                    if extra_loss is not None:
+                        loss = loss + cfg.critique_weight * extra_loss
+                    del extra_loss
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+                batch_count += 1
+
+                # Clean up intermediate tensors to prevent memory accumulation
+                del emb1, emb2, s1, s2, loss, lab_t
+
+                # Clear gradients and GPU cache every few batches to prevent accumulation
+                if batch_count % 5 == 0:  # Every 5 batches
+                    torch.cuda.empty_cache()
+                    # Also clear BLLM internal cache if it exists
+                    if hasattr(generator.BLLM, 'past_key_values'):
+                        generator.BLLM.past_key_values = None
+
+            # Print loss for every epoch
+            avg_loss = total_loss / batch_count if batch_count > 0 else 0.0
+            print(f"     Epoch {ep+1:3d}/{cfg.epochs_per_query}: loss = {avg_loss:.6f}")
+
+            # Clear GPU cache after each epoch to prevent accumulation
+            torch.cuda.empty_cache()
+
+        # Clear optimizer and dataset after training to free memory
+        del optimizer, dataset, loader
+        torch.cuda.empty_cache()
+        return sample_count
+
+    fitted = 0
     for idx, q in enumerate(tqdm(training_queries, desc=f"Training")):
 
         if idx >= 1:
-            reinit_reward_model(generator.reward_model, init_model_weights)
-            dataset = PreferenceDataset(pref_path, include_critiques=use_critiques)
-            if len(dataset) > 0:
-                loader = DataLoader(
-                    dataset,
-                    batch_size=cfg.batch_size,
-                    shuffle=True,
-                    num_workers=0
-                )
-
-                sample_count = len(dataset)
-                wd = 1.0 / (sample_count + 50)
-
-                optimizer = torch.optim.AdamW(
-                    generator.reward_model.parameters(),
-                    lr=cfg.lr,
-                    weight_decay=wd
-                )
-
-                generator.reward_model.train()
-
-                print(f"   Query {idx+1}/{len(training_queries)}: wd={wd:.4f}")
-
-                for ep in range(cfg.epochs_per_query):
-                    total_loss = 0.0
-                    batch_count = 0
-
-                    for batch in loader:
-                        y1, y2, lab = batch[:3]
-                        lab_t = lab.to(cfg.reward_model_device).float() \
-                                if isinstance(lab, torch.Tensor) else torch.tensor(lab, device=cfg.reward_model_device).float()
-
-                        emb1 = generator.get_embedding(list(y1)).to(cfg.reward_model_device)
-                        emb2 = generator.get_embedding(list(y2)).to(cfg.reward_model_device)
-                        s1 = generator.reward_model(emb1)
-                        s2 = generator.reward_model(emb2)
-
-                        # Compute pairwise preference loss
-                        loss = pairwise_loss(s1, s2, lab_t)
-                        if use_critiques:
-                            extra_loss = critique_loss(generator, s1, s2, lab_t, batch[3])
-                            if extra_loss is not None:
-                                loss = loss + cfg.critique_weight * extra_loss
-                            del extra_loss
-
-                        optimizer.zero_grad()
-                        loss.backward()
-                        optimizer.step()
-                        total_loss += loss.item()
-                        batch_count += 1
-
-                        # Clean up intermediate tensors to prevent memory accumulation
-                        del emb1, emb2, s1, s2, loss, lab_t
-
-                        # Clear gradients and GPU cache every few batches to prevent accumulation
-                        if batch_count % 5 == 0:  # Every 5 batches
-                            torch.cuda.empty_cache()
-                            # Also clear BLLM internal cache if it exists
-                            if hasattr(generator.BLLM, 'past_key_values'):
-                                generator.BLLM.past_key_values = None
-
-                    # Print loss for every epoch
-                    avg_loss = total_loss / batch_count if batch_count > 0 else 0.0
-                    print(f"     Epoch {ep+1:3d}/{cfg.epochs_per_query}: loss = {avg_loss:.6f}")
-
-                    # Clear GPU cache after each epoch to prevent accumulation
-                    torch.cuda.empty_cache()
-
-                # Clear optimizer and dataset after training to free memory
-                del optimizer, dataset, loader
-                torch.cuda.empty_cache()
-        else:
-            pass  
+            fitted = fit_preferences(
+                PreferenceDataset(pref_path, include_critiques=use_critiques),
+                f"Query {idx + 1}/{len(training_queries)}",
+            )
 
         # 3. Generate two responses using current RM with specified weight
         enhanced_prompt = construct_prompt_with_preference(q, cfg.attribute)
@@ -304,9 +308,13 @@ def train_reward(generator: MABRewardGenerator, judge: PreferenceCollector,
         # Clear response variables after preference collection
         del response_1, response_2, enhanced_prompt
 
-        # Save final checkpoint only (after last query)
+        # This round's feedback was written after generation. Fit it before saving,
+        # so a completed run includes every successful round in the checkpoint.
         if idx == len(training_queries) - 1:
-            ckpt_f = os.path.join(ckpt_dir, f"final_model.pt")
+            collected = PreferenceDataset(pref_path, include_critiques=use_critiques)
+            if len(collected) > fitted:
+                fit_preferences(collected, f"Final fit on {len(collected)} preferences")
+            ckpt_f = os.path.join(ckpt_dir, "final_model.pt")
             torch.save(generator.reward_model.state_dict(), ckpt_f)
 
     # Return final checkpoint path

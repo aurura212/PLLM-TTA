@@ -219,8 +219,21 @@ class IncrementTests(unittest.TestCase):
                                       batch_size=2, lr=0.01, epochs_per_query=1, reward_model_device="cpu",
                                       attribute="concise", reward_weight=1.0, max_new_tokens=12,
                                       pre_screen_beam_width=5, nu_mab=1.0, lambda_mab=1.0)
-                with patch.object(imple_armo, "generate_revision", return_value="The test passed.") as revise:
+                loaded = []
+
+                class RecordingDataset(imple_armo.PreferenceDataset):
+                    def __init__(self, path, include_critiques=False):
+                        super().__init__(path, include_critiques=include_critiques)
+                        loaded.append((len(self), len(generator.calls)))
+
+                with patch.object(imple_armo, "PreferenceDataset", RecordingDataset), \
+                        patch.object(imple_armo, "generate_revision", return_value="The test passed.") as revise:
                     imple_armo.train_reward(generator, judge, "concise", ["Q1", "Q2", "Q3"], cfg)
+                # One sample, then two, then all three after the last generation.
+                self.assertEqual(loaded, [(1, 1), (2, 2), (3, 3)])
+                saved = torch.load(Path(cfg.output_dir) / "checkpoints" / "final_model.pt",
+                                   map_location="cpu", weights_only=True)
+                self.assertTrue(torch.equal(saved["weight"], generator.reward_model.weight.detach()))
                 self.assertEqual(revise.call_count, 3 if mode == "critique" else 0)
                 if mode == "critique":
                     self.assertEqual(revise.call_args.args[2:], ("The test passed. Extra detail follows.",
@@ -231,8 +244,33 @@ class IncrementTests(unittest.TestCase):
                     self.assertTrue(record["critique"]["revised_y"].endswith("The test passed."))
                 results[mode] = (generator.calls, CountedAdamW.steps, generator.reward_model.weight.detach().clone())
             self.assertEqual(results["choice"][:2], results["critique"][:2])
-            self.assertEqual(results["choice"][1], 2)
+            # Fits on 1, 2, and finally 3 samples. The last fit has two batches.
+            self.assertEqual(results["choice"][1], 4)
             self.assertFalse(torch.equal(results["choice"][2], results["critique"][2]))
+
+            torch.manual_seed(42)
+            generator = Generator()
+            judge = collector(["[[A]]", "[[A]]"], critiques=False)
+            real_collect = judge.collect_single
+            attempts = {"n": 0}
+
+            def collect(example):
+                attempts["n"] += 1
+                if attempts["n"] == 3:
+                    return None
+                return real_collect(example)
+
+            judge.collect_single = collect
+            CountedAdamW.steps = 0
+            cfg = SimpleNamespace(output_dir=str(Path(folder) / "missing-last"), feedback_mode="choice",
+                                  critique_weight=4.0, batch_size=2, lr=0.01, epochs_per_query=1,
+                                  reward_model_device="cpu", attribute="concise", reward_weight=1.0,
+                                  max_new_tokens=12, pre_screen_beam_width=5, nu_mab=1.0, lambda_mab=1.0)
+            imple_armo.train_reward(generator, judge, "concise", ["Q1", "Q2", "Q3"], cfg)
+            preferences = Path(cfg.output_dir) / "preferences" / "preferences.jsonl"
+            self.assertEqual(len(preferences.read_text(encoding="utf-8").splitlines()), 2)
+            self.assertEqual(len(generator.calls), 3)
+            self.assertEqual(CountedAdamW.steps, 2)
 
     def test_optional_evaluation_feedback_does_not_change_winner(self):
         evaluation = WinrateEvaluator(

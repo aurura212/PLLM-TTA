@@ -1,4 +1,0 @@
-group,wins,ties,losses,win_vs_prompt,repair,preserve,joint,correct,prompt_repair,prompt_preserve,prompt_joint,prompt_correct
-choice,0,1,1,0.25,0.5,0.0,0.0,1.0,1.0,0.0,0.0,1.0
-reason,0,0,2,0.0,0.5,0.0,0.0,1.0,1.0,0.0,0.0,1.0
-critique,0,0,2,0.0,0.5,0.0,0.0,1.0,1.0,0.0,0.0,1.0

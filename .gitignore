@@ -14,14 +14,14 @@ venv/
 dist/
 build/
 
-# Caches and ephemeral run noise (keep metrics / reports trackable)
-outputs/**/api_cache/
-outputs/*.log
+# Experiment outputs stay on disk but are not versioned
+outputs/
+
+# Caches and ephemeral run noise
 **/api_cache/
 *.log
 
-# Model / probe parameters (metrics JSON still tracked)
-outputs/**/probe.npz
+# Model parameters
 *.npz
 *.safetensors
 *.bin

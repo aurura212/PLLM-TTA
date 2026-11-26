@@ -20,6 +20,7 @@ else:
     import judger
 
 import imple_armo
+import rm_eval
 from winrate_evaluator import WinrateEvaluator
 
 
@@ -40,13 +41,49 @@ EXAMPLE = {"attribute": "concise", "query": "What happened?", "enhanced_query": 
 
 
 class IncrementTests(unittest.TestCase):
-    def test_shared_generation_and_rm_evaluation_sources(self):
-        project = Path(__file__).resolve().parents[1]
-        upstream = project.parent / "T-POP-main"
-        if not upstream.is_dir():
-            self.skipTest("The upstream sibling is only needed for this byte comparison")
-        for name in ("model.py", "rm_eval.py"):
-            self.assertEqual((project / name).read_bytes(), (upstream / name).read_bytes())
+    def test_full_experiment_writes_scores_and_keeps_result_summary(self):
+        with tempfile.TemporaryDirectory() as folder:
+            data_file = Path(folder) / "questions.json"
+            data_file.write_text(json.dumps([
+                {"index": 7, "question": "First question"},
+                {"index": "q9", "question": "Second question"},
+                {"index": 21, "question": "Third question"},
+            ]), encoding="utf-8")
+            output = Path(folder) / "run"
+            cfg = SimpleNamespace(
+                output_dir=str(output), data_file=str(data_file), llm_path="mock-llm",
+                seed=42, attribute="creative", feedback_mode="choice", critique_weight=0.5,
+                openai_api_key="unused", preference_model_name="unused", preference_api_base_url="unused",
+                preference_api_sleep_time=0, preference_api_max_retries=1, embedding_model_path="mock-embedding",
+                llm_device="cpu", reward_model_device="cpu", embedding_model_device="cpu",
+                normalize_sentence_embeddings=True, train_samples=1, lr=0.001,
+                batch_size=2, rm_batch_size=128, epochs_per_query=1,
+                reward_weight=1.0, max_new_tokens=128, pre_screen_beam_width=40, nu_mab=0.5, lambda_mab=1.0,
+            )
+            evaluator = fake_evaluator({"First answer": 0.7, "Third answer": 0.3}, batch_size=128)
+            with patch.multiple(
+                imple_armo, PreferenceCollector=Mock(), MABRewardGenerator=Mock(return_value=SimpleNamespace()),
+                train_reward=Mock(return_value=str(output / "unused.pt")),
+                generate_with_fixed_weight=Mock(side_effect=["First answer", "", "Third answer"]),
+                PersonalizationRMEvaluator=Mock(return_value=evaluator),
+            ):
+                imple_armo.run(cfg)
+            records = read_jsonl(output / "responses" / "responses_armo_rw_1.00.jsonl")
+            self.assertEqual(records, [
+                {"question_id": 7, "query": "First question", "ours": "First answer"},
+                {"question_id": 21, "query": "Third question", "ours": "Third answer"},
+            ])
+            scores = read_jsonl(output / "scores.jsonl")
+            self.assertEqual([row["question_id"] for row in scores], [7, "q9", 21])
+            self.assertEqual([row["status"] for row in scores], ["scored", "missing_response", "scored"])
+            self.assertEqual([row[rm_eval.SCORE_FIELD] for row in scores], [0.7, None, 0.3])
+            result = (output / "result.txt").read_text(encoding="utf-8")
+            for line in (
+                "ArmoRM Score: 0.500000", "ArmoRM Device: cpu", "ArmoRM Batch Size: 128",
+                "Total Responses: 2", "Evaluation Queries: 3", "Failed Generations: 1",
+                "ArmoRM Scored Responses: 2", "ArmoRM Score Failures: 0",
+            ):
+                self.assertIn(line, result)
 
     def test_critique_keeps_choice_call_and_accepts_only_user_comment(self):
         control = collector(["[[B]]"], critiques=False)
@@ -219,24 +256,24 @@ class IncrementTests(unittest.TestCase):
 
         calls = []
 
-        def fake_score(responses_file, attribute, device, batch_size):
+        def fake_score(rows, attribute, device, batch_size):
             calls.append((device, batch_size))
             if device.startswith("cuda"):
                 raise RuntimeError("CUDA out of memory")
-            return 0.25
+            return [{"armorm_instruction_following": 0.25}]
 
         with patch.object(imple_armo, "_free_cuda_bytes", return_value=1024), \
                 patch.object(imple_armo, "_score_with_armorm", side_effect=fake_score):
-            score, device, batch_size, note = imple_armo.score_responses("responses.jsonl", "creative", "cuda:4", 128)
-            self.assertEqual((score, device, batch_size), (0.25, "cpu", 4))
+            rows, device, batch_size, note = imple_armo.score_responses([], "creative", "cuda:4", 128)
+            self.assertEqual((rows, device, batch_size), ([{"armorm_instruction_following": 0.25}], "cpu", 4))
             self.assertIn("below the 15 GiB", note)
             self.assertEqual(calls, [("cpu", 4)])
 
         calls.clear()
         with patch.object(imple_armo, "_free_cuda_bytes", return_value=20 * 1024 ** 3), \
                 patch.object(imple_armo, "_score_with_armorm", side_effect=fake_score):
-            score, device, batch_size, note = imple_armo.score_responses("responses.jsonl", "creative", "cuda:4", 128)
-            self.assertEqual((score, device, batch_size), (0.25, "cpu", 4))
+            rows, device, batch_size, note = imple_armo.score_responses([], "creative", "cuda:4", 128)
+            self.assertEqual((rows, device, batch_size), ([{"armorm_instruction_following": 0.25}], "cpu", 4))
             self.assertIn("GPU scoring failed", note)
             self.assertEqual(calls, [("cuda:4", 128), ("cpu", 4)])
 
@@ -252,6 +289,146 @@ class IncrementTests(unittest.TestCase):
             self.assertIn("allocation failed", text)
             self.assertNotIn("ArmoRM Score:", text)
             self.assertNotIn("0.000000", text)
+
+    def test_full_evaluation_preserves_rows_when_scorer_raises(self):
+        with tempfile.TemporaryDirectory() as folder:
+            cfg = SimpleNamespace(output_dir=folder, reward_weight=1.0, nu_mab=0.5, lambda_mab=1.0, llm_device="cpu")
+            questions = [rm_eval.Question(7, "First question"), rm_eval.Question(9, "Second question")]
+            with patch.multiple(
+                imple_armo, generate_with_fixed_weight=Mock(side_effect=["First answer", ""]),
+                score_responses=Mock(side_effect=RuntimeError("scoring unavailable")),
+            ):
+                result = imple_armo.evaluate(SimpleNamespace(), questions, "creative", 128, 40, cfg)
+            rows = read_jsonl(Path(folder) / "scores.jsonl")
+            self.assertEqual([row["status"] for row in rows], ["score_failed", "missing_response"])
+            self.assertEqual([row[rm_eval.SCORE_FIELD] for row in rows], [None, None])
+            self.assertEqual(result["score_failures"], 1)
+            self.assertEqual(result["failed_generations"], 1)
+            self.assertIsNone(result["avg_reward"])
+            self.assertIn("scoring unavailable", result["error"])
+
+
+def read_jsonl(path):
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def fake_evaluator(values, batch_size=4):
+    evaluator = object.__new__(rm_eval.PersonalizationRMEvaluator)
+    evaluator.attribute = "creative"
+    evaluator.rm_batch_size = batch_size
+    evaluator.batch_score = Mock(side_effect=lambda messages: [values[pair[1]["content"]] for pair in messages])
+    return evaluator
+
+
+class ArmoRMTests(unittest.TestCase):
+    def test_legacy_mean_and_bounded_batches(self):
+        evaluator = fake_evaluator({"one": 0.2, "two": 0.5, "three": 0.8}, batch_size=2)
+        self.assertEqual(evaluator.divide_data_batch([1]), [[1]])
+        self.assertEqual(evaluator.divide_data_batch([1, 2, 3]), [[1, 2], [3]])
+        self.assertEqual(evaluator.divide_data_batch([]), [])
+        with tempfile.TemporaryDirectory() as folder:
+            responses = Path(folder) / "legacy.json"
+            responses.write_text(
+                '[{"query":"q1","base":"one"}, {"query":"q2","base":"two"}]\n'
+                '[{"query":"q3","base":"three"}]\n', encoding="utf-8",
+            )
+            self.assertAlmostEqual(evaluator.get_rm_eval(responses, response_key="base"), 0.5)
+        calls = evaluator.batch_score.call_args_list
+        self.assertEqual([len(call.args[0]) for call in calls], [2, 1])
+        self.assertEqual(calls[0].args[0][0][0], {
+            "role": "user", "content": f"q1 {judger.PREFERENCE_ATTRIBUTES['creative']}",
+        })
+
+    def test_response_errors_report_file_and_line(self):
+        questions = [rm_eval.Question(1, "duplicate text"), rm_eval.Question(2, "duplicate text")]
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "responses.jsonl"
+            good = {"question_id": 1, "query": "duplicate text", "ours": "a"}
+            for row, message in [
+                ({"query": "duplicate text", "base": "b"}, "matches multiple questions"),
+                ({"query": "missing", "ours": "b"}, "does not match a question"),
+                ({"question_id": 99, "ours": "b"}, "unknown question ID"),
+                ({"question_id": 2, "query": "wrong", "ours": "b"}, "query conflicts"),
+                (good, "duplicate response"),
+            ]:
+                with self.subTest(message=message):
+                    path.write_text(json.dumps(good) + "\n\n" + json.dumps(row), encoding="utf-8")
+                    with self.assertRaises(ValueError) as error:
+                        rm_eval.load_responses(path, questions)
+                    self.assertIn(f"{path}:3:", str(error.exception))
+                    self.assertIn(message, str(error.exception))
+            path.write_text('[\n  ' + json.dumps(good) + ',\n  ' + json.dumps(good) + '\n]', encoding="utf-8")
+            with self.assertRaises(ValueError) as error:
+                rm_eval.load_responses(path, questions)
+            self.assertIn(f"{path}:3: duplicate response", str(error.exception))
+
+    def test_cli_pairs_by_id_reuses_scores_and_reports_missing_separately(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            questions = root / "data.json"
+            questions.write_text('["q1", "q2", "q3", "q4"]', encoding="utf-8")
+            baseline_path = root / "baseline.jsonl"
+            candidate_path = root / "candidate.jsonl"
+            rm_eval.write_jsonl(baseline_path, [
+                {"query": "q3", "base": "baseline only"},
+                {"query": "q1", "base": "same"},
+                {"query": "q4", "base": "valid"},
+                {"query": "q2", "base": "low"},
+            ])
+            rm_eval.write_jsonl(candidate_path, [
+                {"question_id": 3, "query": "q4", "ours": "nonfinite"},
+                {"question_id": 1, "query": "q2", "ours": "high"},
+                {"question_id": 0, "query": "q1", "ours": "same"},
+            ])
+            evaluator = fake_evaluator({
+                "same": 0.3, "low": 0.1, "high": 0.5, "baseline only": 0.4, "valid": 0.2, "nonfinite": float("nan"),
+            })
+            output = root / "output"
+            command = [
+                "score", "--data-file", str(questions), "--responses-file", str(candidate_path),
+                "--baseline-file", str(baseline_path), "--attribute", "creative",
+                "--model-path", "mock-model", "--output-dir", str(output),
+            ]
+            with patch.object(rm_eval, "PersonalizationRMEvaluator", return_value=evaluator) as load:
+                rm_eval.main(command)
+                load.assert_called_once_with("creative", "cpu", 4, "mock-model")
+            self.assertEqual([len(call.args[0]) for call in evaluator.batch_score.call_args_list], [4, 2])
+            comparison = read_jsonl(output / "comparisons.jsonl")
+            self.assertEqual([row["question_id"] for row in comparison], [0, 1, 2, 3])
+            self.assertEqual([row["delta"] for row in comparison], [0, 0.4, None, None])
+            self.assertEqual(comparison[2]["candidate"]["status"], "missing_response")
+            self.assertEqual(comparison[3]["candidate"]["status"], "score_failed")
+            report = json.loads((output / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(report["baseline"]["scored"], 4)
+            self.assertEqual(report["candidate"]["missing_responses"], 1)
+            self.assertEqual(report["candidate"]["score_failures"], 1)
+            self.assertEqual(report["common_responses"], 3)
+            self.assertEqual(report["common_scored"], 2)
+            self.assertAlmostEqual(report["paired_mean_delta"], 0.2)
+            self.assertEqual(report["paired_delta_ci_95"], [0.0, 0.4])
+            for name in ("baseline", "candidate"):
+                scores = read_jsonl(output / name / "scores.jsonl")
+                self.assertEqual(report[name], rm_eval.summarize_scores(scores))
+
+    def test_single_run_output_and_insufficient_pairs(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            data_file = root / "questions.json"
+            data_file.write_text('[{"index":"A","question":"first"},{"index":4,"question":"second"}]', encoding="utf-8")
+            responses = root / "responses.jsonl"
+            rm_eval.write_jsonl(responses, [{"query": "first", "ours": "answer"}])
+            output = root / "result"
+            with patch.object(rm_eval, "PersonalizationRMEvaluator", return_value=fake_evaluator({"answer": 0.5})):
+                rm_eval.main([
+                    "score", "--data-file", str(data_file), "--responses-file", str(responses),
+                    "--attribute", "creative", "--model-path", "mock-model", "--output-dir", str(output),
+                ])
+            scores = read_jsonl(output / "scores.jsonl")
+            self.assertEqual([row["question_id"] for row in scores], ["A", 4])
+            self.assertEqual(scores[1]["status"], "missing_response")
+            _, summary = rm_eval.compare_scores(scores, scores)
+            self.assertEqual(summary["common_scored"], 1)
+            self.assertIsNone(summary["paired_delta_ci_95"])
 
 
 if __name__ == "__main__":

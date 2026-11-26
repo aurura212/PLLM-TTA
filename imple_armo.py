@@ -17,7 +17,9 @@ from torch.utils.data import DataLoader, Dataset
 
 from model import MABRewardGenerator
 from judger import PreferenceCollector
-from rm_eval import PersonalizationRMEvaluator
+from rm_eval import (
+    PersonalizationRMEvaluator, Question, load_questions, make_score_rows, summarize_scores, write_jsonl,
+)
 
 REVISION_INSTRUCTION = (
     "Rewrite the selected answer to the original question so it addresses the user's feedback. "
@@ -333,7 +335,7 @@ def _free_cuda_bytes(device: str) -> int:
     free, _total = torch.cuda.mem_get_info(index)
     return free
 
-def _score_with_armorm(responses_file: str, attribute: str, device: str, batch_size: int) -> float:
+def _score_with_armorm(rows, attribute: str, device: str, batch_size: int):
     evaluator = None
     try:
         evaluator = PersonalizationRMEvaluator(
@@ -341,16 +343,14 @@ def _score_with_armorm(responses_file: str, attribute: str, device: str, batch_s
             device=device,
             rm_batch_size=batch_size,
         )
-        score = float(evaluator.get_rm_eval(responses_file, response_key="ours"))
+        (scored,) = evaluator.score_groups(rows)
+        return scored
     finally:
         del evaluator
         if str(device).startswith("cuda") and torch.cuda.is_available():
             torch.cuda.empty_cache()
-    if score != score or score in (float("inf"), float("-inf")):
-        raise RuntimeError(f"ArmoRM returned a non-finite score: {score}")
-    return score
 
-def score_responses(responses_file: str, attribute: str, device: str, batch_size: int):
+def score_responses(rows, attribute: str, device: str, batch_size: int):
     """Score on the GPU when it can hold ArmoRM; otherwise score on CPU."""
     notes = []
     gpu_device = device if scoring_device(device, _free_cuda_bytes(device) if str(device).startswith("cuda") else ARMORM_LOAD_BYTES) == device else None
@@ -362,8 +362,8 @@ def score_responses(responses_file: str, attribute: str, device: str, batch_size
         )
     if gpu_device is not None:
         try:
-            score = _score_with_armorm(responses_file, attribute, gpu_device, batch_size)
-            return score, gpu_device, batch_size, "\n".join(notes)
+            scored = _score_with_armorm(rows, attribute, gpu_device, batch_size)
+            return scored, gpu_device, batch_size, "\n".join(notes)
         except Exception as error:
             if not is_memory_error(error):
                 raise
@@ -371,8 +371,8 @@ def score_responses(responses_file: str, attribute: str, device: str, batch_size
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
     notes.append(f"Scored on CPU with batch size {CPU_SCORE_BATCH_SIZE}.")
-    score = _score_with_armorm(responses_file, attribute, "cpu", CPU_SCORE_BATCH_SIZE)
-    return score, "cpu", CPU_SCORE_BATCH_SIZE, "\n".join(notes)
+    scored = _score_with_armorm(rows, attribute, "cpu", CPU_SCORE_BATCH_SIZE)
+    return scored, "cpu", CPU_SCORE_BATCH_SIZE, "\n".join(notes)
 
 def append_experiment_results(result_file: str, result: Dict, training_queries: int, evaluation_queries: int):
     with open(result_file, "a", encoding="utf-8") as handle:
@@ -384,8 +384,9 @@ def append_experiment_results(result_file: str, result: Dict, training_queries: 
             handle.write(result["error"].rstrip() + "\n")
         else:
             handle.write(f"ArmoRM Score: {result['avg_reward']:.6f}\n")
-            handle.write(f"ArmoRM Device: {result.get('score_device', '')}\n")
-            handle.write(f"ArmoRM Batch Size: {result.get('score_batch_size', '')}\n")
+        if "score_device" in result:
+            handle.write(f"ArmoRM Device: {result['score_device']}\n")
+            handle.write(f"ArmoRM Batch Size: {result['score_batch_size']}\n")
             if result.get("score_note"):
                 handle.write(result["score_note"].rstrip() + "\n")
         handle.write(f"Total Responses: {result['total']}\n")
@@ -393,13 +394,16 @@ def append_experiment_results(result_file: str, result: Dict, training_queries: 
         handle.write(f"Evaluation Queries: {evaluation_queries}\n")
         if result.get("failed_generations", 0) > 0:
             handle.write(f"Failed Generations: {result['failed_generations']}\n")
+        if "scores_file" in result:
+            handle.write(f"ArmoRM Scored Responses: {result['scored_responses']}\n")
+            handle.write(f"ArmoRM Score Failures: {result['score_failures']}\n")
+            handle.write(f"ArmoRM Scores File: {result['scores_file']}\n")
         handle.write("=" * 50 + "\n")
 
-def evaluate(generator: MABRewardGenerator, queries: List[str], attribute: str,
+def evaluate(generator: MABRewardGenerator, questions: List[Question], attribute: str,
              max_new_tokens: int, pre_screen_beam_width: int, cfg) -> Dict:
 
-    total = 0
-    failed_generations = 0
+    answers = {}
 
     # Create directory for saving responses
     responses_dir = os.path.join(cfg.output_dir, "responses")
@@ -407,27 +411,28 @@ def evaluate(generator: MABRewardGenerator, queries: List[str], attribute: str,
     responses_file = os.path.join(responses_dir, f"responses_armo_rw_{cfg.reward_weight:.2f}.jsonl")
 
     # Generate responses for all queries
-    for query in tqdm(queries, desc=f"Generating responses"):
+    for question in tqdm(questions, desc="Generating responses"):
         # Generate response with specified weight
         response = generate_with_fixed_weight(
-            generator, query, max_new_tokens, pre_screen_beam_width, cfg.reward_weight,
+            generator, question.query, max_new_tokens, pre_screen_beam_width, cfg.reward_weight,
             nu_mab=cfg.nu_mab, lambda_mab=cfg.lambda_mab, attribute=attribute
             )
 
-        if not response:
-            failed_generations += 1
+        if not response or not response.strip():
             continue
 
         # Save generated response (only ours, no baseline needed)
         response_data = {
-            "query": query,
+            "question_id": question.question_id,
+            "query": question.query,
             "ours": response
         }
 
         with open(responses_file, "a", encoding="utf-8") as rf:
             rf.write(json.dumps(response_data, ensure_ascii=False) + "\n")
 
-        total += 1
+        answers[question.question_id] = response
+        total = len(answers)
 
         # Clear evaluation query-specific variables
         del response, response_data
@@ -457,7 +462,20 @@ def evaluate(generator: MABRewardGenerator, queries: List[str], attribute: str,
         elif total % 10 == 0:
             torch.cuda.empty_cache()
 
+    total = len(answers)
+    failed_generations = len(questions) - total
     print(f"\nEvaluating {total} responses with ArmoRM...")
+    rows = make_score_rows(questions, answers)
+    scores_file = os.path.join(cfg.output_dir, "scores.jsonl")
+    summary = {
+        "weight": cfg.reward_weight,
+        "regularization": "weight_decay",
+        "total": total,
+        "failed_generations": failed_generations,
+        "responses_file": responses_file,
+        "evaluation_method": "ArmoRM",
+        "scores_file": scores_file,
+    }
 
     try:
         if hasattr(generator, 'LLM'):
@@ -472,50 +490,35 @@ def evaluate(generator: MABRewardGenerator, queries: List[str], attribute: str,
         if total == 0:
             raise RuntimeError("No responses were generated.")
         batch_size = cfg.rm_batch_size if hasattr(cfg, 'rm_batch_size') else 32
-        avg_reward, score_device, score_batch_size, score_note = score_responses(
-            responses_file, attribute, cfg.llm_device, batch_size
+        rows, score_device, score_batch_size, score_note = score_responses(
+            rows, attribute, cfg.llm_device, batch_size
         )
+        summary.update(score_device=score_device, score_batch_size=score_batch_size, score_note=score_note)
+    except Exception:
+        summary["error"] = traceback.format_exc()
 
-        summary = {
-            "weight": cfg.reward_weight,
-            "regularization": "weight_decay",
-            "total": total,
-            "avg_reward": avg_reward,
-            "failed_generations": failed_generations,
-            "responses_file": responses_file,
-            "evaluation_method": "ArmoRM",
-            "score_device": score_device,
-            "score_batch_size": score_batch_size,
-            "score_note": score_note,
-        }
-
+    metrics = summarize_scores(rows)
+    avg_reward = metrics["mean"]
+    summary.update(avg_reward=avg_reward, scored_responses=metrics["scored"], score_failures=metrics["score_failures"])
+    write_jsonl(scores_file, rows)
+    if avg_reward is None:
+        summary.setdefault("error", "ArmoRM did not return any finite scores.")
+    if summary.get("error"):
+        print(summary["error"])
+    else:
         print(f"   Average ArmoRM reward: {avg_reward:.6f} ({score_device}, batch {score_batch_size})")
         if score_note:
             print(score_note)
-        print(f"   Total responses: {total}")
-        print(f"   Failed generations: {failed_generations}")
-        print(f"   Responses saved to: {responses_file}")
-
-        return summary
-
-    except Exception:
-        message = traceback.format_exc()
-        print(message)
-        return {
-            "weight": cfg.reward_weight,
-            "regularization": "weight_decay",
-            "total": total,
-            "avg_reward": None,
-            "failed_generations": failed_generations,
-            "responses_file": responses_file,
-            "evaluation_method": "ArmoRM",
-            "error": message,
-        }
+    print(f"   Total responses: {total}")
+    print(f"   Failed generations: {failed_generations}")
+    print(f"   Responses saved to: {responses_file}")
+    print(f"   Scores saved to: {scores_file}")
+    return summary
 
 def run(cfg):
     if not math.isfinite(cfg.critique_weight) or cfg.critique_weight < 0:
         raise ValueError("--critique_weight must be finite and non-negative")
-    if any(os.path.exists(os.path.join(cfg.output_dir, name)) for name in ("preferences", "checkpoints", "responses")):
+    if any(os.path.exists(os.path.join(cfg.output_dir, name)) for name in ("preferences", "checkpoints", "responses", "scores.jsonl")):
         raise ValueError("Use a fresh --output_dir for each run to avoid mixing feedback and checkpoints")
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
@@ -531,23 +534,13 @@ def run(cfg):
     if not os.path.exists(cfg.data_file):
         raise FileNotFoundError(f"Data file not found: {cfg.data_file}")
 
-    all_data = json.load(open(cfg.data_file, "r", encoding="utf-8"))
-
-    if isinstance(all_data, list) and len(all_data) > 0:
-        if isinstance(all_data[0], dict) and "question" in all_data[0]:
-            all_queries = [item["question"] for item in all_data]
-            pass  
-        else:
-            all_queries = all_data
-    else:
-        all_queries = all_data
+    questions = load_questions(cfg.data_file)
+    all_queries = [question.query for question in questions]
 
     if cfg.train_samples > len(all_queries):
         training_queries = all_queries.copy()
     else:
         training_queries = random.sample(all_queries, cfg.train_samples)
-
-    eval_queries = all_queries.copy()
 
     os.makedirs(cfg.output_dir, exist_ok=True)
 
@@ -616,14 +609,14 @@ def run(cfg):
 
         result = evaluate(
             generator=generator,
-            queries=eval_queries,
+            questions=questions,
             attribute=cfg.attribute,
             max_new_tokens=cfg.max_new_tokens,
             pre_screen_beam_width=cfg.pre_screen_beam_width,
             cfg=cfg
         )
 
-        append_experiment_results(result_file, result, len(training_queries), len(eval_queries))
+        append_experiment_results(result_file, result, len(training_queries), len(questions))
 
         if result.get("error"):
             print(f"ArmoRM scoring failed. The error is recorded in {result_file}")

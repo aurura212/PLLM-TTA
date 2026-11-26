@@ -2,7 +2,7 @@
 
 ## 基于 T-POP 的在线对照实验
 
-当前入口为 `imple_armo.py`。`model.py` 和 `rm_eval.py` 是同级 `T-POP-main` 对应文件的原样副本。两组共用原始候选生成器、利用与探索分支、嵌入模型、MLP 奖励头、数据抽样、优化器与评测流程。`T-POP-main` 保留原始快照。
+完整实验入口为 `imple_armo.py`。两组共用候选生成器、利用与探索分支、嵌入模型、MLP 奖励头、数据抽样、优化器与评测流程。同级 `T-POP-main` 保留原版快照。
 
 | 模式 | 在线反馈与训练 |
 |---|---|
@@ -40,7 +40,29 @@ python -B imple_armo.py "${common[@]}" --feedback_mode critique --critique_weigh
   --output_dir outputs/tpop-increment/assistant-critique
 ```
 
-对照 `result.txt` 的原版 ArmoRM 分数。需要 A/B 胜率时，运行原版胜率入口。加上 `--collect_critiques` 后，独立裁判在作出原版 A/B 判决之后还能给出文字评价。此步骤把评价保存在 `wins.critiques.jsonl`，胜率依然只由原有判决计算。基于评价生成 A′ 的步骤发生在在线训练中。
+### 逐题 ArmoRM 评分
+
+完整实验会在运行目录写入 `scores.jsonl`，每道计划题一行。`result.txt` 保留均分、实际评分设备和批大小，并记录有效评分数与评分失败数。`missing_response` 表示缺少可评分的回复，`score_failed` 表示有回复但没有得到有效分数。两种状态的分数都为 `null`。
+
+已有回复可以独立重新评分。以下命令在 `PLLM-TTA` 目录运行，使用本地 ArmoRM 权重，默认在 CPU 上按每批 4 条评分。可设置 `--device cuda:0` 和 `--batch-size` 使用有足够显存的 GPU。
+
+```bash
+baseline=outputs/T-POP-main-result/ArmoRM-Eval-Personal/Qwen2.5-1.5B-Instruct/creative/20261125_110451
+candidate=outputs/tpop-increment/20261125_162429/assistant-critique
+python -m rm_eval score \
+  --data-file data/personal_preference_eval_preference_data.json \
+  --baseline-file "$baseline/responses/responses_armo_rw_1.00.jsonl" \
+  --responses-file "$candidate/responses/responses_armo_rw_1.00.jsonl" \
+  --attribute creative \
+  --model-path /data/zhujiajun/schema-mem/ArmoRM-Llama3-8B-v0.1 \
+  --output-dir outputs/armorm-comparison/personal-creative-20261125
+```
+
+配对结果包括 `baseline/scores.jsonl`、`candidate/scores.jsonl`、`comparisons.jsonl` 及 `summary.json`。分差是候选减去基线，只在两侧均有有效分数时计算。汇总同时报告全量题数、各自覆盖率和共同有效题上的配对均值差及 95% bootstrap 置信区间。省略 `--baseline-file` 时，输出单组 `scores.jsonl` 和 `summary.json`。
+
+### API 胜率评测
+
+胜率入口可通过 `--collect_critiques` 保存独立裁判作出 A/B 判决后给出的文字评价，文件为 `wins.critiques.jsonl`。胜率由 A/B 判决计算。基于评价生成 A′ 的步骤发生在在线训练中。
 
 ```bash
 python -B winrate_evaluator.py --attribute concise \

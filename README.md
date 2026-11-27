@@ -54,7 +54,7 @@ python -m rm_eval score \
   --baseline-file "$baseline/responses/responses_armo_rw_1.00.jsonl" \
   --responses-file "$candidate/responses/responses_armo_rw_1.00.jsonl" \
   --attribute creative \
-  --model-path /data/zhujiajun/schema-mem/ArmoRM-Llama3-8B-v0.1 \
+  --model-path /data/zhujiajun/LLM/ArmoRM-Llama3-8B-v0.1 \
   --output-dir outputs/armorm-comparison/personal-creative-20261125
 ```
 

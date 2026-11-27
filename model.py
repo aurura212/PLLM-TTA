@@ -374,3 +374,204 @@ class MABRewardGenerator:
                 if hasattr(self.LLM, 'past_key_values'):
                     self.LLM.past_key_values = None
         return current_tokens_arm1[0], current_tokens_arm2[0]
+
+    def _init_mab_state(self, lambda_mab: float) -> None:
+        if not hasattr(self, "V_diag") or not hasattr(self, "total_reward_params"):
+            self.total_reward_params = sum(p.numel() for p in self.reward_model.parameters() if p.requires_grad)
+            # Diagonal of V_0 = λ I (Algo. 1). The full outer product is intractable
+            # at reward-parameter scale, so only the diagonal is stored.
+            self.V_diag = lambda_mab * torch.ones(
+                self.total_reward_params,
+                dtype=torch.float32,
+                device=self.reward_model_device,
+            )
+
+    def _last_token_logits(self, sequences: List[torch.Tensor]) -> torch.Tensor:
+        """Last-token logits for a left-padded batch. Real tokens keep positions 0, 1, 2, ..."""
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+        rows = [seq.view(-1).to(self.llm_device) for seq in sequences]
+        width = max(row.numel() for row in rows)
+        pad_id = self.tokenizer.pad_token_id
+        input_ids = torch.full((len(rows), width), pad_id, dtype=torch.long, device=self.llm_device)
+        attention_mask = torch.zeros((len(rows), width), dtype=torch.long, device=self.llm_device)
+        for index, row in enumerate(rows):
+            length = row.numel()
+            input_ids[index, width - length:] = row
+            attention_mask[index, width - length:] = 1
+        position_ids = attention_mask.cumsum(dim=-1) - 1
+        position_ids = position_ids.masked_fill(attention_mask == 0, 0)
+        with torch.no_grad():
+            output = self.LLM(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                use_cache=False,
+                output_hidden_states=False,
+            )
+        return output.logits[:, -1, :]
+
+    def _extend_pair(
+        self,
+        logits1: torch.Tensor,
+        logits2: torch.Tensor,
+        tokens1: torch.Tensor,
+        tokens2: torch.Tensor,
+        weight: float,
+        pre_screen_beam_width: int,
+        nu_mab: float,
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+        """Pick the next token for both arms. The covariance update is returned, not applied."""
+        _, topk_tokens1_indices = torch.topk(logits1, pre_screen_beam_width, dim=-1)
+        candidates_s1 = topk_tokens1_indices[0, :]
+        _, topk_tokens2_indices = torch.topk(logits2, pre_screen_beam_width, dim=-1)
+        candidates_s2 = topk_tokens2_indices[0, :]
+
+        union_candidates = torch.unique(torch.cat([candidates_s1, candidates_s2], dim=0))
+        union_beam_width = len(union_candidates)
+        union_candidate_tokens = union_candidates.unsqueeze(1)
+
+        full_probs1 = torch.softmax(logits1, dim=-1)
+        full_probs2 = torch.softmax(logits2, dim=-1)
+        union_candidates_expanded = union_candidates.unsqueeze(0)
+        probs1 = full_probs1.gather(-1, union_candidates_expanded)[0]
+        probs2 = full_probs2.gather(-1, union_candidates_expanded)[0]
+
+        cand_sequences1_ids = torch.cat([tokens1.repeat(union_beam_width, 1), union_candidate_tokens], dim=1)
+        cand_sequences2_ids = torch.cat([tokens2.repeat(union_beam_width, 1), union_candidate_tokens], dim=1)
+        sentence_embeddings_cand1 = self.get_embedding(self.tokens_to_text(cand_sequences1_ids, tokenizer_type="llm"))
+        sentence_embeddings_cand2 = self.get_embedding(self.tokens_to_text(cand_sequences2_ids, tokenizer_type="llm"))
+
+        sentence_embeddings_cand1_grad = sentence_embeddings_cand1.clone().detach().to(self.reward_model_device).float()
+        sentence_embeddings_cand2_grad = sentence_embeddings_cand2.clone().detach().to(self.reward_model_device).float()
+        sentence_embeddings_cand1_grad.requires_grad_(True)
+        sentence_embeddings_cand2_grad.requires_grad_(True)
+        rewards1_grad = self.reward_model(sentence_embeddings_cand1_grad).view(-1)
+        rewards2_grad = self.reward_model(sentence_embeddings_cand2_grad).view(-1)
+
+        grads_cand1 = []
+        grads_cand2 = []
+        for i in range(union_beam_width):
+            self.reward_model.zero_grad()
+            rewards1_grad[i].backward(retain_graph=True)
+            grads_cand1.append(torch.cat([p.grad.flatten() for p in self.reward_model.parameters() if p.grad is not None]))
+            self.reward_model.zero_grad()
+            rewards2_grad[i].backward(retain_graph=True)
+            grads_cand2.append(torch.cat([p.grad.flatten() for p in self.reward_model.parameters() if p.grad is not None]))
+        self.reward_model.zero_grad()
+        grads_cand1 = torch.stack(grads_cand1, dim=0)
+        grads_cand2 = torch.stack(grads_cand2, dim=0)
+
+        with torch.no_grad():
+            rew1_01 = torch.sigmoid(rewards1_grad.detach().to(self.llm_device))
+            rew2_01 = torch.sigmoid(rewards2_grad.detach().to(self.llm_device))
+        del sentence_embeddings_cand1_grad, sentence_embeddings_cand2_grad, rewards1_grad, rewards2_grad
+
+        score1 = probs1 + weight * rew1_01
+        best_idx_arm1 = torch.argmax(score1).item()
+        next_token_arm1 = union_candidates[best_idx_arm1].unsqueeze(0).unsqueeze(0)
+        greedy_grad = grads_cand1[best_idx_arm1] if best_idx_arm1 < len(grads_cand1) else grads_cand1[-1]
+
+        exploration_term = torch.zeros(union_beam_width, device=self.reward_model_device)
+        try:
+            for i in range(union_beam_width):
+                grad_diff = grads_cand2[i] - greedy_grad
+                if grad_diff.shape[0] == self.V_diag.shape[0]:
+                    exploration_term[i] = torch.sqrt(
+                        torch.sum(grad_diff**2 / self.V_diag.clamp(min=1e-16)).clamp(min=1e-16)
+                    )
+            exploration_term = exploration_term.to(self.llm_device)
+        except Exception:
+            exploration_term = torch.zeros(union_beam_width, device=self.llm_device)
+
+        score2 = probs2 + weight * (rew2_01 + nu_mab * exploration_term)
+        best_idx_arm2 = torch.argmax(score2).item()
+        next_token_arm2 = union_candidates[best_idx_arm2].unsqueeze(0).unsqueeze(0)
+        if next_token_arm1.item() == next_token_arm2.item():
+            score2_copy = score2.clone()
+            score2_copy[best_idx_arm2] = float("-inf")
+            best_idx_arm2 = torch.argmax(score2_copy).item()
+            next_token_arm2 = union_candidates[best_idx_arm2].unsqueeze(0).unsqueeze(0)
+
+        grad_update = None
+        try:
+            selected_grad1 = grads_cand1[best_idx_arm1]
+            selected_grad2 = grads_cand2[best_idx_arm2]
+            if selected_grad1.shape[0] == selected_grad2.shape[0] == self.V_diag.shape[0]:
+                grad_update = (selected_grad1 - selected_grad2).detach() ** 2
+        except Exception:
+            grad_update = None
+        return next_token_arm1, next_token_arm2, grad_update
+
+    def generate_batch(
+        self,
+        prompts: List[str],
+        weight: float,
+        max_new_tokens: int = 128,
+        pre_screen_beam_width: int = 20,
+        lambda_mab: float = 1.0,
+        nu_mab: float = 0.1,
+    ) -> List[Optional[Tuple[torch.Tensor, torch.Tensor]]]:
+        """Decode several prompts together. Questions still running share one model forward per token."""
+        if not prompts:
+            return []
+        self._init_mab_state(lambda_mab)
+        states = []
+        for prompt in prompts:
+            seed = self.get_input_ids(prompt, tokenizer_type="llm")
+            states.append({"arm1": seed.clone(), "arm2": seed.clone(), "failed": False, "done": False})
+
+        for step in range(max_new_tokens):
+            active = [state for state in states if not state["done"]]
+            if not active:
+                break
+            try:
+                logits = self._last_token_logits(
+                    [state["arm1"] for state in active] + [state["arm2"] for state in active]
+                )
+            except Exception as error:
+                print(f"[WARNING] Parallel generation step failed ({type(error).__name__}): {error}")
+                for state in active:
+                    state["failed"] = True
+                    state["done"] = True
+                break
+
+            updates = []
+            half = len(active)
+            for index, state in enumerate(active):
+                try:
+                    next1, next2, grad_update = self._extend_pair(
+                        logits[index].unsqueeze(0),
+                        logits[half + index].unsqueeze(0),
+                        state["arm1"],
+                        state["arm2"],
+                        weight,
+                        pre_screen_beam_width,
+                        nu_mab,
+                    )
+                except Exception as error:
+                    print(f"[WARNING] Parallel candidate step failed ({type(error).__name__}): {error}")
+                    state["failed"] = True
+                    state["done"] = True
+                    continue
+                state["arm1"] = torch.cat([state["arm1"], next1], dim=1)
+                state["arm2"] = torch.cat([state["arm2"], next2], dim=1)
+                updates.append(grad_update)
+                if next1.item() == self.tokenizer.eos_token_id and next2.item() == self.tokenizer.eos_token_id:
+                    state["done"] = True
+            for grad_update in updates:
+                if grad_update is not None:
+                    self.V_diag = self.V_diag + grad_update
+
+            if step % 5 == 0 and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                if hasattr(self.LLM, "past_key_values"):
+                    self.LLM.past_key_values = None
+
+        results: List[Optional[Tuple[torch.Tensor, torch.Tensor]]] = []
+        for state in states:
+            if state["failed"]:
+                results.append(None)
+            else:
+                results.append((state["arm1"][0].detach().cpu(), state["arm2"][0].detach().cpu()))
+        return results

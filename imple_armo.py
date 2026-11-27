@@ -160,6 +160,133 @@ def generate_with_fixed_weight(generator: MABRewardGenerator, query: str,
     except Exception:
         return ""
 
+
+def configured_eval_parallel(cfg) -> int:
+    """How many evaluation questions are answered at the same time."""
+    value = int(getattr(cfg, "eval_parallel", 1))
+    if value < 1:
+        raise ValueError("--eval_parallel must be a positive integer")
+    return value
+
+
+RESUME_STATE = "resume_state.json"
+TRAINING_QUERIES = "training_queries.json"
+
+
+def _atomic_json(path: str, payload) -> None:
+    temporary = path + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+
+
+def load_resume_state(output_dir: str) -> dict:
+    path = os.path.join(output_dir, RESUME_STATE)
+    if not os.path.isfile(path):
+        return {"completed_queries": [], "phase": "train"}
+    with open(path, "r", encoding="utf-8") as handle:
+        state = json.load(handle)
+    state["completed_queries"] = [int(index) for index in state.get("completed_queries", [])]
+    state["phase"] = state.get("phase", "train")
+    return state
+
+
+def save_resume_state(output_dir: str, state: dict) -> None:
+    os.makedirs(output_dir, exist_ok=True)
+    _atomic_json(os.path.join(output_dir, RESUME_STATE), state)
+
+
+def mark_query_done(output_dir: str, state: dict, index: int) -> None:
+    done = set(state["completed_queries"])
+    done.add(index)
+    state["completed_queries"] = sorted(done)
+    save_resume_state(output_dir, state)
+
+
+def saved_query_indexes(pref_path: str) -> set:
+    found = set()
+    if not os.path.isfile(pref_path):
+        return found
+    with open(pref_path, "r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if "query_index" in record:
+                found.add(int(record["query_index"]))
+    return found
+
+
+def load_saved_responses(path: str) -> Dict:
+    answers = {}
+    if not os.path.isfile(path):
+        return answers
+    with open(path, "r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            text = row.get("ours")
+            if "question_id" in row and isinstance(text, str) and text.strip():
+                answers[row["question_id"]] = text
+    return answers
+
+
+def result_has_score(path: str) -> bool:
+    if not os.path.isfile(path):
+        return False
+    with open(path, "r", encoding="utf-8") as handle:
+        return any(line.startswith("ArmoRM Score:") for line in handle)
+
+
+def _response_from_ids(generator: MABRewardGenerator, ids: torch.Tensor, prompt: str) -> str:
+    raw_response = generator.tokenizer.decode(ids, skip_special_tokens=True)
+    if raw_response.startswith(prompt):
+        return raw_response[len(prompt):].lstrip()
+    return raw_response
+
+
+def generate_with_fixed_weight_batch(generator: MABRewardGenerator, queries: List[str],
+                                     max_new_tokens: int, pre_screen_beam_width: int, reward_weight: float,
+                                     nu_mab: float = 1.0, lambda_mab: float = 1.0, attribute: str = "creative") -> List[str]:
+    """Answer several evaluation questions in one decoding loop."""
+    prompts = [construct_prompt_with_preference(query, attribute) for query in queries]
+    try:
+        pairs = generator.generate_batch(
+            prompts,
+            weight=reward_weight,
+            max_new_tokens=max_new_tokens,
+            pre_screen_beam_width=pre_screen_beam_width,
+            nu_mab=nu_mab,
+            lambda_mab=lambda_mab,
+        )
+    except Exception:
+        return [""] * len(queries)
+    if len(pairs) != len(prompts):
+        return [""] * len(queries)
+
+    responses = []
+    for prompt, pair in zip(prompts, pairs):
+        if not pair:
+            responses.append("")
+            continue
+        try:
+            responses.append(_response_from_ids(generator, pair[0], prompt))
+        except Exception:
+            responses.append("")
+    return responses
+
 # Baseline generation functions removed - not needed for ArmoRM evaluation
 
 def train_reward(generator: MABRewardGenerator, judge: PreferenceCollector,
@@ -174,6 +301,13 @@ def train_reward(generator: MABRewardGenerator, judge: PreferenceCollector,
 
     pref_path = os.path.join(pref_dir, "preferences.jsonl")
     use_critiques = cfg.feedback_mode == "critique" and cfg.critique_weight > 0
+    state = load_resume_state(cfg.output_dir)
+    completed = set(state["completed_queries"]) | saved_query_indexes(pref_path)
+    state["completed_queries"] = sorted(completed)
+    final_ckpt = os.path.join(ckpt_dir, "final_model.pt")
+    if completed >= set(range(len(training_queries))) and os.path.isfile(final_ckpt):
+        print(f"   Training already finished ({len(training_queries)} queries).")
+        return final_ckpt
 
     def fit_preferences(dataset: PreferenceDataset, label: str) -> int:
         """Refit the original reward weights on one snapshot of collected feedback."""
@@ -249,6 +383,8 @@ def train_reward(generator: MABRewardGenerator, judge: PreferenceCollector,
 
     fitted = 0
     for idx, q in enumerate(tqdm(training_queries, desc=f"Training")):
+        if idx in completed:
+            continue
 
         if idx >= 1:
             fitted = fit_preferences(
@@ -269,6 +405,8 @@ def train_reward(generator: MABRewardGenerator, judge: PreferenceCollector,
                 lambda_mab=cfg.lambda_mab
             )
         except Exception:
+            mark_query_done(cfg.output_dir, state, idx)
+            completed.add(idx)
             continue
 
         # Decode & strip prompt echo
@@ -297,13 +435,21 @@ def train_reward(generator: MABRewardGenerator, judge: PreferenceCollector,
                 if use_critiques and critique and critique["comment"]:
                     selected_answer = response_1 if pref["label"] == 0 else response_2
                     add_assistant_revision(generator, critique, enhanced_prompt, selected_answer, cfg.max_new_tokens)
+                pref["query_index"] = idx
                 with open(pref_path, "a", encoding="utf-8") as pf:
                     pf.write(json.dumps(pref, ensure_ascii=False) + "\n")
+                    pf.flush()
+                    os.fsync(pf.fileno())
 
             # Clear preference collection variables
             del pref
         except Exception:
+            mark_query_done(cfg.output_dir, state, idx)
+            completed.add(idx)
             continue
+
+        mark_query_done(cfg.output_dir, state, idx)
+        completed.add(idx)
 
         # Clear response variables after preference collection
         del response_1, response_2, enhanced_prompt
@@ -314,11 +460,13 @@ def train_reward(generator: MABRewardGenerator, judge: PreferenceCollector,
             collected = PreferenceDataset(pref_path, include_critiques=use_critiques)
             if len(collected) > fitted:
                 fit_preferences(collected, f"Final fit on {len(collected)} preferences")
-            ckpt_f = os.path.join(ckpt_dir, "final_model.pt")
-            torch.save(generator.reward_model.state_dict(), ckpt_f)
+            torch.save(generator.reward_model.state_dict(), final_ckpt)
 
-    # Return final checkpoint path
-    final_ckpt = os.path.join(ckpt_dir, "final_model.pt")
+    if not os.path.isfile(final_ckpt):
+        collected = PreferenceDataset(pref_path, include_critiques=use_critiques)
+        if len(collected) > 0:
+            fit_preferences(collected, f"Final fit on {len(collected)} preferences")
+        torch.save(generator.reward_model.state_dict(), final_ckpt)
     return final_ckpt
 
 # ArmoRM-Llama3-8B is about 14 GiB in bfloat16. Leave headroom for the allocator.
@@ -408,6 +556,40 @@ def append_experiment_results(result_file: str, result: Dict, training_queries: 
             handle.write(f"ArmoRM Scores File: {result['scores_file']}\n")
         handle.write("=" * 50 + "\n")
 
+def _record_eval_response(generator, question: Question, response: str, answers: Dict, responses_file: str) -> None:
+    if not response or not response.strip():
+        return
+
+    response_data = {
+        "question_id": question.question_id,
+        "query": question.query,
+        "ours": response
+    }
+
+    with open(responses_file, "a", encoding="utf-8") as rf:
+        rf.write(json.dumps(response_data, ensure_ascii=False) + "\n")
+
+    answers[question.question_id] = response
+    total = len(answers)
+
+    if hasattr(generator, 'last_topk_logits1'):
+        generator.last_topk_logits1 = None
+    if hasattr(generator, 'last_rewards1'):
+        generator.last_rewards1 = None
+    if hasattr(generator, 'last_topk_logits2'):
+        generator.last_topk_logits2 = None
+    if hasattr(generator, 'last_rewards2'):
+        generator.last_rewards2 = None
+
+    if total % 50 == 0:
+        if hasattr(generator, "LLM") and hasattr(generator.LLM, 'past_key_values'):
+            generator.LLM.past_key_values = None
+        if hasattr(generator, "BLLM") and hasattr(generator.BLLM, 'past_key_values'):
+            generator.BLLM.past_key_values = None
+        torch.cuda.empty_cache()
+    elif total % 10 == 0:
+        torch.cuda.empty_cache()
+
 def evaluate(generator: MABRewardGenerator, questions: List[Question], attribute: str,
              max_new_tokens: int, pre_screen_beam_width: int, cfg) -> Dict:
 
@@ -417,64 +599,43 @@ def evaluate(generator: MABRewardGenerator, questions: List[Question], attribute
     responses_dir = os.path.join(cfg.output_dir, "responses")
     os.makedirs(responses_dir, exist_ok=True)
     responses_file = os.path.join(responses_dir, f"responses_armo_rw_{cfg.reward_weight:.2f}.jsonl")
+    answers.update(load_saved_responses(responses_file))
+    pending = [question for question in questions if question.question_id not in answers]
+    if answers:
+        print(f"Resuming evaluation with {len(answers)} saved responses, {len(pending)} left.")
 
-    # Generate responses for all queries
-    for question in tqdm(questions, desc="Generating responses"):
-        # Generate response with specified weight
-        response = generate_with_fixed_weight(
-            generator, question.query, max_new_tokens, pre_screen_beam_width, cfg.reward_weight,
-            nu_mab=cfg.nu_mab, lambda_mab=cfg.lambda_mab, attribute=attribute
-            )
-
-        if not response or not response.strip():
-            continue
-
-        # Save generated response (only ours, no baseline needed)
-        response_data = {
-            "question_id": question.question_id,
-            "query": question.query,
-            "ours": response
-        }
-
-        with open(responses_file, "a", encoding="utf-8") as rf:
-            rf.write(json.dumps(response_data, ensure_ascii=False) + "\n")
-
-        answers[question.question_id] = response
-        total = len(answers)
-
-        # Clear evaluation query-specific variables
-        del response, response_data
-
-        # Clear MAB generation history (each evaluation query is independent)
-        if hasattr(generator, 'last_topk_logits1'):
-            generator.last_topk_logits1 = None
-        if hasattr(generator, 'last_rewards1'):
-            generator.last_rewards1 = None
-        if hasattr(generator, 'last_topk_logits2'):
-            generator.last_topk_logits2 = None
-        if hasattr(generator, 'last_rewards2'):
-            generator.last_rewards2 = None
-
-        # Clear model internal caches periodically during evaluation
-        if total % 50 == 0:  # Every 50 evaluation queries
-            # Clear LLM KV cache
-            if hasattr(generator.LLM, 'past_key_values'):
-                generator.LLM.past_key_values = None
-            # Clear BLLM cache
-            if hasattr(generator.BLLM, 'past_key_values'):
-                generator.BLLM.past_key_values = None
-            # Force GPU cache cleanup
-            torch.cuda.empty_cache()
-
-        # Light cleanup every 10 queries
-        elif total % 10 == 0:
-            torch.cuda.empty_cache()
+    # Generate responses for all queries. Parallel 1 keeps the original one-question decoder.
+    parallel = configured_eval_parallel(cfg)
+    print(f"Generating responses with eval_parallel={parallel}")
+    with tqdm(total=len(pending), desc="Generating responses") as progress:
+        for start in range(0, len(pending), parallel):
+            chunk = pending[start:start + parallel]
+            if parallel == 1:
+                responses = [
+                    generate_with_fixed_weight(
+                        generator, question.query, max_new_tokens, pre_screen_beam_width, cfg.reward_weight,
+                        nu_mab=cfg.nu_mab, lambda_mab=cfg.lambda_mab, attribute=attribute,
+                    )
+                    for question in chunk
+                ]
+            else:
+                responses = generate_with_fixed_weight_batch(
+                    generator, [question.query for question in chunk], max_new_tokens, pre_screen_beam_width,
+                    cfg.reward_weight, nu_mab=cfg.nu_mab, lambda_mab=cfg.lambda_mab, attribute=attribute,
+                )
+            for question, response in zip(chunk, responses):
+                progress.update(1)
+                _record_eval_response(
+                    generator, question, response, answers, responses_file,
+                )
 
     total = len(answers)
     failed_generations = len(questions) - total
     print(f"\nEvaluating {total} responses with ArmoRM...")
     rows = make_score_rows(questions, answers)
     scores_file = os.path.join(cfg.output_dir, "scores.jsonl")
+    if os.path.isfile(scores_file):
+        os.remove(scores_file)
     summary = {
         "weight": cfg.reward_weight,
         "regularization": "weight_decay",
@@ -526,8 +687,15 @@ def evaluate(generator: MABRewardGenerator, questions: List[Question], attribute
 def run(cfg):
     if not math.isfinite(cfg.critique_weight) or cfg.critique_weight < 0:
         raise ValueError("--critique_weight must be finite and non-negative")
-    if any(os.path.exists(os.path.join(cfg.output_dir, name)) for name in ("preferences", "checkpoints", "responses", "scores.jsonl")):
+    eval_parallel = configured_eval_parallel(cfg)
+    os.makedirs(cfg.output_dir, exist_ok=True)
+    result_file = os.path.join(cfg.output_dir, "result.txt")
+    resuming = os.path.isfile(os.path.join(cfg.output_dir, RESUME_STATE))
+    if not resuming and any(os.path.exists(os.path.join(cfg.output_dir, name)) for name in ("preferences", "checkpoints", "responses", "scores.jsonl")):
         raise ValueError("Use a fresh --output_dir for each run to avoid mixing feedback and checkpoints")
+    if resuming and result_has_score(result_file):
+        print(f"Already finished. Results: {result_file}")
+        return
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
     random.seed(cfg.seed)
@@ -545,15 +713,24 @@ def run(cfg):
     questions = load_questions(cfg.data_file)
     all_queries = [question.query for question in questions]
 
-    if cfg.train_samples > len(all_queries):
+    queries_path = os.path.join(cfg.output_dir, TRAINING_QUERIES)
+    if os.path.isfile(queries_path):
+        with open(queries_path, "r", encoding="utf-8") as handle:
+            training_queries = json.load(handle)
+    elif cfg.train_samples > len(all_queries):
         training_queries = all_queries.copy()
     else:
         training_queries = random.sample(all_queries, cfg.train_samples)
+    if not os.path.isfile(queries_path):
+        _atomic_json(queries_path, training_queries)
+    if not resuming:
+        save_resume_state(cfg.output_dir, {"completed_queries": [], "phase": "train"})
 
-    os.makedirs(cfg.output_dir, exist_ok=True)
-
-    result_file = os.path.join(cfg.output_dir, "result.txt")
-    with open(result_file, 'w', encoding='utf-8') as sf:
+    settings_mode = "a" if resuming else "w"
+    with open(result_file, settings_mode, encoding='utf-8') as sf:
+        if resuming:
+            sf.write(f"\nRESUME {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        else:
             sf.write("EXPERIMENT SETTINGS\n")
             sf.write("=" * 50 + "\n")
             sf.write(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -571,9 +748,11 @@ def run(cfg):
             sf.write(f"Reward Weight: {cfg.reward_weight}\n")
             sf.write(f"Training Samples: {cfg.train_samples}\n")
             sf.write(f"Random Seed: {cfg.seed}\n")
+            sf.write(f"Eval parallel: {eval_parallel}\n")
             sf.write(f"Feedback mode: {cfg.feedback_mode}\n")
             sf.write(f"Critique weight: {cfg.critique_weight if cfg.feedback_mode == 'critique' else 0}\n")
 
+    state = load_resume_state(cfg.output_dir)
     try:
         judge = PreferenceCollector(
             api_key=cfg.openai_api_key,
@@ -598,13 +777,20 @@ def run(cfg):
             normalize_sentence_embeddings=cfg.normalize_sentence_embeddings,
         )
 
-        checkpoint_path = train_reward(
-            generator=generator,
-            judge=judge,
-            attribute=cfg.attribute,
-            training_queries=training_queries,
-            cfg=cfg
-        )
+        if state["phase"] == "train":
+            checkpoint_path = train_reward(
+                generator=generator,
+                judge=judge,
+                attribute=cfg.attribute,
+                training_queries=training_queries,
+                cfg=cfg
+            )
+            state = load_resume_state(cfg.output_dir)
+            state["phase"] = "eval"
+            save_resume_state(cfg.output_dir, state)
+        else:
+            checkpoint_path = os.path.join(cfg.output_dir, "checkpoints", "final_model.pt")
+            print("Phase 1 already finished. Skipping to evaluation.")
 
         # Phase 2: Evaluation
         print("Phase 2: Evaluating trained model...")
@@ -625,6 +811,10 @@ def run(cfg):
         )
 
         append_experiment_results(result_file, result, len(training_queries), len(questions))
+        if result_has_score(result_file):
+            state = load_resume_state(cfg.output_dir)
+            state["phase"] = "done"
+            save_resume_state(cfg.output_dir, state)
 
         if result.get("error"):
             print(f"ArmoRM scoring failed. The error is recorded in {result_file}")
@@ -667,6 +857,8 @@ if __name__ == "__main__":
                         help="Training batch size")
     parser.add_argument("--rm_batch_size", type=int, default=128,
                         help="ArmoRM evaluation batch size")
+    parser.add_argument("--eval_parallel", type=int, default=1,
+                        help="Number of evaluation questions answered at the same time")
     parser.add_argument("--lr", type=float, default=5e-4,
                         help="Learning rate")
     parser.add_argument("--epochs_per_query", type=int, default=100,

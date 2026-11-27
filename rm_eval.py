@@ -15,7 +15,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from preference_attributes import PREFERENCE_ATTRIBUTES
 
 
-DEFAULT_MODEL_PATH = "/data/zhujiajun/schema-mem/ArmoRM-Llama3-8B-v0.1"
+DEFAULT_MODEL_PATH = "/data/zhujiajun/LLM/ArmoRM-Llama3-8B-v0.1"
 SCORE_FIELD = "armorm_instruction_following"
 
 

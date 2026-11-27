@@ -21,6 +21,7 @@ else:
 
 import imple_armo
 import rm_eval
+from model import MABRewardGenerator, Network
 from winrate_evaluator import WinrateEvaluator
 
 
@@ -272,6 +273,46 @@ class IncrementTests(unittest.TestCase):
             self.assertEqual(len(generator.calls), 3)
             self.assertEqual(CountedAdamW.steps, 2)
 
+    def test_resume_repeats_only_the_unfinished_query(self):
+        class Generator:
+            def __init__(self):
+                self.reward_model = torch.nn.Linear(1, 1)
+                self.tokenizer = SimpleNamespace(decode=lambda reply, **kwargs: reply)
+                self.calls = []
+
+            def generate(self, **kwargs):
+                self.calls.append(kwargs["prompt"])
+                prefix = kwargs["prompt"]
+                return prefix + " yes", prefix + " no"
+
+            def get_embedding(self, texts):
+                return torch.tensor([[0.1] for _ in texts])
+
+        with tempfile.TemporaryDirectory() as folder:
+            cfg = SimpleNamespace(output_dir=folder, feedback_mode="choice", critique_weight=0.0,
+                                  batch_size=2, lr=0.01, epochs_per_query=1, reward_model_device="cpu",
+                                  attribute="concise", reward_weight=1.0, max_new_tokens=8,
+                                  pre_screen_beam_width=4, nu_mab=1.0, lambda_mab=1.0)
+            generator = Generator()
+            imple_armo.train_reward(generator, collector(["[[A]]", "[[A]]"], critiques=False),
+                                    "concise", ["Q1", "Q2"], cfg)
+            self.assertEqual(len(generator.calls), 2)
+            again = Generator()
+            imple_armo.train_reward(again, collector([], critiques=False), "concise", ["Q1", "Q2"], cfg)
+            self.assertEqual(again.calls, [])
+
+            state = json.loads((Path(folder) / "resume_state.json").read_text(encoding="utf-8"))
+            state["completed_queries"] = [0]
+            (Path(folder) / "resume_state.json").write_text(json.dumps(state), encoding="utf-8")
+            saved = (Path(folder) / "preferences" / "preferences.jsonl").read_text(encoding="utf-8").splitlines()
+            (Path(folder) / "preferences" / "preferences.jsonl").write_text(saved[0] + "\n", encoding="utf-8")
+            (Path(folder) / "checkpoints" / "final_model.pt").unlink()
+            resumed = Generator()
+            imple_armo.train_reward(resumed, collector(["[[B]]"], critiques=False),
+                                    "concise", ["Q1", "Q2"], cfg)
+            self.assertEqual(len(resumed.calls), 1)
+            self.assertTrue(resumed.calls[0].startswith("Q2 "))
+
     def test_optional_evaluation_feedback_does_not_change_winner(self):
         evaluation = WinrateEvaluator(
             collector(["[[A]]", '{"comment":"Good enough for me."}'],
@@ -345,9 +386,124 @@ class IncrementTests(unittest.TestCase):
             self.assertIsNone(result["avg_reward"])
             self.assertIn("scoring unavailable", result["error"])
 
+    def test_eval_parallel_answers_questions_in_groups_and_keeps_order(self):
+        instruction = judger.PREFERENCE_ATTRIBUTES["creative"]
+        prompts = {
+            "q1": f"q1 {instruction}",
+            "q2": f"q2 {instruction}",
+            "q3": f"q3 {instruction}",
+        }
+        prompt_ids = {prompts["q1"]: 1, prompts["q2"]: 2, prompts["q3"]: 3}
+
+        class Tok:
+            def decode(self, ids, skip_special_tokens=True):
+                prefix = {1: prompts["q1"], 2: prompts["q2"], 3: prompts["q3"]}[int(ids.view(-1)[0])]
+                answer = {1: "answer-1", 2: "answer-2", 3: "answer-3"}[int(ids.view(-1)[0])]
+                return f"{prefix} {answer}"
+
+        seen = []
+
+        def generate_batch(batch_prompts, **kwargs):
+            seen.append(list(batch_prompts))
+            return [(torch.tensor([prompt_ids[prompt]]), torch.tensor([0])) for prompt in batch_prompts]
+
+        def fake_score(rows, attribute, device, batch_size):
+            scored = []
+            for row in rows:
+                if row["response"]:
+                    scored.append({**row, "status": "scored", rm_eval.SCORE_FIELD: 0.5})
+                else:
+                    scored.append(row)
+            return scored, "cpu", 1, ""
+
+        with tempfile.TemporaryDirectory() as folder:
+            cfg = SimpleNamespace(
+                output_dir=folder, reward_weight=1.0, nu_mab=0.5, lambda_mab=1.0,
+                llm_device="cpu", rm_batch_size=4, eval_parallel=2,
+            )
+            questions = [rm_eval.Question(1, "q1"), rm_eval.Question(2, "q2"), rm_eval.Question(3, "q3")]
+            generator = SimpleNamespace(generate_batch=generate_batch, tokenizer=Tok())
+            with patch.object(imple_armo, "generate_with_fixed_weight", side_effect=AssertionError("serial path")), \
+                    patch.object(imple_armo, "score_responses", side_effect=fake_score):
+                result = imple_armo.evaluate(generator, questions, "creative", 8, 4, cfg)
+            self.assertEqual(seen, [[prompts["q1"], prompts["q2"]], [prompts["q3"]]])
+            records = read_jsonl(Path(folder) / "responses" / "responses_armo_rw_1.00.jsonl")
+            self.assertEqual([row["ours"] for row in records], ["answer-1", "answer-2", "answer-3"])
+            self.assertEqual(result["failed_generations"], 0)
+            self.assertAlmostEqual(result["avg_reward"], 0.5)
+
+    def test_eval_parallel_rejects_nonpositive(self):
+        with self.assertRaises(ValueError):
+            imple_armo.configured_eval_parallel(SimpleNamespace(eval_parallel=0))
+
+    def test_parallel_decoder_matches_one_question_and_pads_positions(self):
+        single = _fake_reward_generator()
+        batched = _fake_reward_generator()
+        arm1, arm2 = single.generate(
+            prompt="same", weight=1.0, max_new_tokens=2, pre_screen_beam_width=3, nu_mab=0.5, lambda_mab=1.0,
+        )
+        pairs = batched.generate_batch(
+            ["same"], weight=1.0, max_new_tokens=2, pre_screen_beam_width=3, nu_mab=0.5, lambda_mab=1.0,
+        )
+        self.assertTrue(torch.equal(arm1.cpu(), pairs[0][0]))
+        self.assertTrue(torch.equal(arm2.cpu(), pairs[0][1]))
+        self.assertTrue(torch.equal(single.V_diag, batched.V_diag))
+
+        padded = _fake_reward_generator()
+        padded.get_input_ids = lambda prompt, tokenizer_type="llm": (
+            torch.tensor([[1]]) if prompt == "short" else torch.tensor([[1, 1, 1]])
+        )
+        padded.generate_batch(
+            ["short", "long"], weight=1.0, max_new_tokens=1, pre_screen_beam_width=3, nu_mab=0.5, lambda_mab=1.0,
+        )
+        self.assertEqual(padded.LLM.batches, [4])
+        self.assertEqual(padded.LLM.position_ids[0][0], [0, 0, 0])
+        self.assertEqual(padded.LLM.position_ids[0][1], [0, 1, 2])
+
 
 def read_jsonl(path):
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+class _FakeTokenizer:
+    eos_token_id = 2
+    pad_token_id = 0
+
+    def batch_decode(self, tokens, skip_special_tokens=True):
+        return [" ".join(str(int(token)) for token in row.tolist()) for row in tokens]
+
+
+class _FakeLLM:
+    def __init__(self):
+        self.batches = []
+        self.position_ids = []
+
+    def __call__(self, input_ids, attention_mask, use_cache=False, output_hidden_states=False, position_ids=None):
+        self.batches.append(input_ids.shape[0])
+        if position_ids is not None:
+            self.position_ids.append(position_ids.detach().cpu().tolist())
+        logits = torch.zeros(input_ids.shape[0], input_ids.shape[1], 6)
+        for index in range(input_ids.shape[0]):
+            if int(input_ids[index, -1]) == 1:
+                logits[index, -1, 4] = 5
+                logits[index, -1, 5] = 3
+                logits[index, -1, 3] = 1
+            else:
+                logits[index, -1, 2] = 5
+                logits[index, -1, 4] = 1
+        return SimpleNamespace(logits=logits)
+
+
+def _fake_reward_generator():
+    generator = object.__new__(MABRewardGenerator)
+    generator.llm_device = "cpu"
+    generator.reward_model_device = "cpu"
+    generator.tokenizer = _FakeTokenizer()
+    generator.LLM = _FakeLLM()
+    generator.reward_model = Network(input_dim=4).eval()
+    generator.get_input_ids = lambda prompt, tokenizer_type="llm": torch.tensor([[1, 1]])
+    generator.get_embedding = lambda texts: torch.zeros(len(texts), 4)
+    return generator
 
 
 def fake_evaluator(values, batch_size=4):
